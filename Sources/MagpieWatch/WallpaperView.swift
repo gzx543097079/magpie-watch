@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// 桌面动态壁纸：常驻在桌面图标下方，半透明底色让系统壁纸隐约透出，
-/// 内容复用路由动画与用量指标，整体比屏保更安静。
+/// 桌面动态壁纸：常驻在桌面图标下方，半透明底色让系统壁纸隐约透出。
+/// 主舞台是多 agent 路由：智能体 → Magpie 网关 → 模型，再沿原路回流。
 struct WallpaperView: View {
     @ObservedObject var model: AppModel
 
@@ -11,11 +11,10 @@ struct WallpaperView: View {
     private var palette: WatchPalette { model.theme.palette }
 
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack {
             background
             AmbientOrbField()
-            TokenRiverBackdrop(route: model.routePresentation, strength: 0.48)
 
             VStack(spacing: 0) {
                 header
@@ -26,18 +25,11 @@ struct WallpaperView: View {
                     .padding(.horizontal, 64)
                     .padding(.top, 8)
 
-                TokenFlowView(route: model.routePresentation, style: .ambient)
-                    .frame(maxWidth: 1_280)
-                    .frame(height: tokenStageHeight(proxy.size.height))
-                    .padding(.horizontal, 48)
+                WallpaperRouteScene(board: model.wallpaperBoard)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 28)
                     .padding(.top, 8)
-
-                RouteNetworkView(route: model.routePresentation, immersive: true)
-                    .frame(maxWidth: 1_360)
-                    .frame(maxHeight: .infinity)
-                    .padding(.horizontal, 70)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 4)
 
                 footer
                     .padding(.horizontal, 64)
@@ -60,13 +52,14 @@ struct WallpaperView: View {
         .accessibilityLabel(wallpaperSummary)
     }
 
-    private func tokenStageHeight(_ total: CGFloat) -> CGFloat {
-        min(150, max(108, total * 0.155))
-    }
-
     private var wallpaperSummary: String {
-        let selected = model.routePresentation.candidates.first(where: \.isSelected)
-        return "动态壁纸：今日 \(model.todayCalls) 次请求，当前路由到 \(selected?.providerName ?? "等待路由")"
+        let board = model.wallpaperBoard
+        let moving = board.flows.filter { $0.stage != .waiting }.count
+        if board.agents.isEmpty {
+            return "动态壁纸：今日 \(model.todayCalls) 次请求。等待智能体经由 Magpie 网关发往模型"
+        }
+        let names = board.agents.map(\.name).joined(separator: "、")
+        return "动态壁纸：\(names) 经由 Magpie 网关发往模型，\(moving) 条真实路由在传输"
     }
 
     /// 半透明深色底：压暗壁纸保证内容可读，同时保留壁纸的色彩氛围。
@@ -189,14 +182,23 @@ struct WallpaperView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 0) {
-            footerMetric("智能体", model.routePresentation.agentName)
+        let board = model.wallpaperBoard
+        let moving = board.flows.filter { $0.stage != .waiting }.count
+        let agentLabel = board.agents.isEmpty ? "等待接入" : board.agents.map(\.name).joined(separator: " · ")
+        let modelLabel = board.destinations.isEmpty
+            ? "等待模型"
+            : board.destinations.map(\.modelName).joined(separator: " · ")
+        let requestTokens = board.flows.reduce(0) { $0 + $1.requestTokens }
+        let responseTokens = board.flows.reduce(0) { $0 + $1.responseTokens }
+        let tokenLabel = moving == 0 ? "静止" : "↑\(Fmt.compact(requestTokens)) ↓\(Fmt.compact(responseTokens))"
+        return HStack(spacing: 0) {
+            footerMetric("智能体", agentLabel)
             divider
-            footerMetric("模型", model.routePresentation.modelName)
+            footerMetric("模型", modelLabel)
             divider
-            footerMetric("请求", "\(model.routePresentation.requests)")
+            footerMetric("在途", moving == 0 ? "静止" : "\(moving)")
             divider
-            footerMetric("延迟", model.routePresentation.latency)
+            footerMetric("本段令牌", tokenLabel)
             Spacer()
             Text(model.isOnline ? "实时更新" : "等待重连")
                 .font(.custom(WatchTheme.bodyFont, size: 8).weight(.semibold))

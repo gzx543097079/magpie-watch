@@ -10,10 +10,9 @@ struct ScreensaverView: View {
     private var palette: WatchPalette { model.theme.palette }
 
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack {
             background
-            TokenRiverBackdrop(route: model.routePresentation, strength: 0.82)
             ambientOrbs
             ambientGrid
 
@@ -26,18 +25,11 @@ struct ScreensaverView: View {
                     .padding(.horizontal, 58)
                     .padding(.top, 12)
 
-                TokenFlowView(route: model.routePresentation, style: .cinematic)
-                    .frame(maxWidth: 1_360)
-                    .frame(height: tokenStageHeight(proxy.size.height))
-                    .padding(.horizontal, 48)
-                    .padding(.top, 6)
-
-                RouteNetworkView(route: model.routePresentation, immersive: true)
-                    .frame(maxWidth: 1_440)
-                    .frame(maxHeight: .infinity)
-                    .padding(.horizontal, 60)
+                WallpaperRouteScene(board: model.wallpaperBoard, immersive: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 36)
                     .padding(.top, 8)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 6)
 
                 footer
                     .padding(.horizontal, 58)
@@ -60,10 +52,21 @@ struct ScreensaverView: View {
         .onExitCommand(perform: onDismiss)
         .onTapGesture(perform: onDismiss)
         .accessibilityAddTraits(.isModal)
+        .accessibilityLabel(screensaverSummary)
     }
 
-    private func tokenStageHeight(_ total: CGFloat) -> CGFloat {
-        min(164, max(116, total * 0.17))
+    private var stageIsLive: Bool {
+        model.wallpaperBoard.flows.contains { $0.stage != .waiting }
+    }
+
+    private var screensaverSummary: String {
+        let board = model.wallpaperBoard
+        let moving = board.flows.filter { $0.stage != .waiting }.count
+        if board.agents.isEmpty {
+            return "屏保：等待智能体经由 Magpie 网关发往模型"
+        }
+        let names = board.agents.map(\.name).joined(separator: "、")
+        return "屏保：\(names) 经由 Magpie 网关发往模型，\(moving) 条真实路由在传输"
     }
 
     private var background: some View {
@@ -207,10 +210,10 @@ struct ScreensaverView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     LiveDot(
-                        isLive: model.routePresentation.isLive,
-                        color: model.routePresentation.isLive ? palette.seaBright : palette.amber
+                        isLive: stageIsLive,
+                        color: stageIsLive ? palette.seaBright : palette.amber
                     )
-                    Text(model.routePresentation.isLive ? "路由传输中" : "正在观测网关")
+                    Text(stageIsLive ? "路由传输中" : "正在观测网关")
                         .font(.custom(WatchTheme.displayCNFont, size: 10).weight(.medium))
                         .tracking(1.2)
                         .foregroundStyle(palette.seaBright.opacity(0.9))
@@ -271,16 +274,23 @@ struct ScreensaverView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 0) {
-            footerMetric("智能体", model.routePresentation.agentName)
+        let board = model.wallpaperBoard
+        let moving = board.flows.filter { $0.stage != .waiting }.count
+        let agentLabel = board.agents.isEmpty ? "等待接入" : board.agents.map(\.name).joined(separator: " · ")
+        let modelLabel = board.destinations.isEmpty
+            ? "等待模型"
+            : board.destinations.map(\.modelName).joined(separator: " · ")
+        let requestTokens = board.flows.reduce(0) { $0 + $1.requestTokens }
+        let responseTokens = board.flows.reduce(0) { $0 + $1.responseTokens }
+        let tokenLabel = moving == 0 ? "静止" : "↑\(Fmt.compact(requestTokens)) ↓\(Fmt.compact(responseTokens))"
+        return HStack(spacing: 0) {
+            footerMetric("智能体", agentLabel)
             divider
-            footerMetric("模型", model.routePresentation.modelName)
+            footerMetric("模型", modelLabel)
             divider
-            footerMetric("请求", "\(model.routePresentation.requests)")
+            footerMetric("在途", moving == 0 ? "静止" : "\(moving)")
             divider
-            footerMetric("重路由", "\(model.routePresentation.rerouted)")
-            divider
-            footerMetric("延迟", model.routePresentation.latency)
+            footerMetric("本段令牌", tokenLabel)
             Spacer()
             Text("127.0.0.1:3425")
                 .font(.custom(WatchTheme.monoFont, size: 8))

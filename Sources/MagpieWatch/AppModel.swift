@@ -160,6 +160,16 @@ final class AppModel: ObservableObject {
         return cache / (cache + input) * 100
     }
 
+    /// 壁纸和屏保用的多 agent 舞台。小组件仍使用单路由的 `routePresentation`。
+    var wallpaperBoard: WallpaperFlowBoard {
+        WallpaperBoardBuilder.make(
+            usage: usage,
+            trace: trace,
+            service: service,
+            isOnline: isOnline
+        )
+    }
+
     var routePresentation: RoutePresentation {
         let route = latestRoute
         let selectedID = route?.tries?.last?.id ?? route?.order?.first?.id

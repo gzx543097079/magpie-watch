@@ -89,15 +89,16 @@ NSApplication
 | --- | --- |
 | `Sources/MagpieWatch/main.swift` | 创建 `NSApplication`，安装 `AppDelegate`，设置为 accessory 应用并进入事件循环。 |
 | `Sources/MagpieWatch/AppDelegate.swift` | 菜单栏、菜单动作、启动参数、空闲监控、屏保触发和偏好窗口生命周期。 |
-| `Sources/MagpieWatch/AppModel.swift` | 4 秒轮询、在线状态、错误状态、路由选择、额度摘要、设置持久化。 |
+| `Sources/MagpieWatch/AppModel.swift` | 4 秒轮询、在线状态、错误状态、路由选择、额度摘要、设置持久化。小组件继续用单路由 `routePresentation`；壁纸和屏保用 `wallpaperBoard`。 |
 | `Sources/MagpieWatch/MagpieAPI.swift` | HTTP 客户端、超时、状态码检查、JSON 解码。 |
 | `Sources/MagpieWatch/Models.swift` | Magpie API 解码模型和视图展示模型。 |
 | `Sources/MagpieWatch/PanelControllers.swift` | `FloatingPanel`、小组件窗口、屏保全屏窗口与输入退出监听。 |
 | `Sources/MagpieWatch/WidgetView.swift` | 展开和紧凑两种小组件布局。 |
 | `Sources/MagpieWatch/ScreensaverView.swift` | 全屏屏保布局、头部、指标、底部状态和退出提示。 |
-| `Sources/MagpieWatch/TokenFlowView.swift` | Token 流向光带：缓存 / 输入分行交织，输出反向回流；紧凑、面板、壁纸舞台、屏保舞台四种尺度，另有全屏淡色 `TokenRiverBackdrop`。 |
-| `Sources/MagpieWatch/WallpaperView.swift` | 桌面动态壁纸布局与 `AmbientOrbField` 环境光晕组件。 |
-| `Sources/MagpieWatch/RouteVisuals.swift` | 路由 Canvas、曲线、粒子、节点和 Reduce Motion 处理。 |
+| `Sources/MagpieWatch/TokenFlowView.swift` | 小组件上的 Token 流向光带：缓存 / 输入分行交织，输出反向回流。壁纸和屏保不再用它当主舞台。 |
+| `Sources/MagpieWatch/WallpaperView.swift` | 桌面动态壁纸布局与 `AmbientOrbField` 环境光晕组件。主舞台是 `WallpaperRouteScene`。 |
+| `Sources/MagpieWatch/WallpaperRouteScene.swift` | 多 agent 路由舞台：左侧智能体、中央 Magpie、右侧模型。真实 trace 才沿曲线播包；没有路由时节点等待、链路为虚线。 |
+| `Sources/MagpieWatch/RouteVisuals.swift` | 小组件单路由 Canvas、曲线、粒子、节点和 Reduce Motion 处理。 |
 | `Sources/MagpieWatch/PreferencesView.swift` | 偏好设置 UI。 |
 | `Sources/MagpieWatch/Theme.swift` | 四套 `WatchPalette`、字体、玻璃面板、品牌标记、通用按钮。当前主题经 `\.watchPalette` 传给界面。 |
 | `Sources/MagpieWatch/Formatting.swift` | 数字缩写、货币、百分比、延迟、日期和账号遮蔽。 |
@@ -367,10 +368,18 @@ open 'dist/Magpie Watch.app'
 
 ## 15. 变更记录
 
+### 2026-10-23（壁纸改多 agent 舞台）
+
+- 动态壁纸和屏保的主画面改为多 agent 路由编排，不再用 Token 光带占舞台。一眼可读的方向是：多个智能体 → Magpie 本地网关 → 请求模型 → 响应回流到智能体。
+- 新增 `WallpaperRouteScene` / `WallpaperBoardBuilder`。节点来自 `usage.agents`（最多 4 个）和 `usage.models`（补足最多 4 个等待中的模型）。每个智能体只保留 90 秒内最新的一条非等待 trace。阶段：进入网关 1.4 秒内为 incoming，之后未完成为 outbound，完成后约 22 秒内为 returning，其余为 waiting。
+- 包只在真实 trace 上播放。incoming 用主色沿智能体→网关移动，outbound 用输入色沿网关→模型移动，returning 用回流色反向走完两段。粒子数量按该跳 token 体量在 1–3 之间。没有路由时链路是虚线，节点标为等待。
+- 同一模型被多个智能体同时使用时，描边取更活跃的阶段，每条真实 trace 仍各自播包。被数量上限挤掉的一端会回到等待，避免画出没有端点的包。
+- Token 光带留在小组件。壁纸和屏保底部只用本段真实上/下行 token 做读数，不再铺全屏光带。四套主题、壁纸窗口层级、`--wallpaper` 和偏好开关保持不变。Reduce Motion 时粒子停止，结构和配色保留。
+
 ### 2026-10-23
 
 - Token 流向改成电影感光带：缓存与输入分行交织，输出反向回流。厚度、彗星数量和流速绑定真实 token 体量与 tok/s；体量为 0 的车道不播放粒子。
-- 壁纸使用 `ambient` 舞台，屏保使用 `cinematic` 舞台，两者底层增加低透明度 `TokenRiverBackdrop`。沉浸式路由的入站链路在有上行 token 时追加缓存/输入粒子，管道粗细随体量略增；没有输出 token 时不再画回流粒子。
+- 当时壁纸使用 `ambient` 舞台，屏保使用 `cinematic` 舞台。这一版已被上面的多 agent 舞台替换；小组件仍使用紧凑和面板光带。沉浸式单路由视图只留在小组件。
 - 新增四套可切换主题：极光暮色（`aurora`，原配色）、黑金夜宴（`noir`）、离子极昼（`ion`）、熔核（`ember`）。菜单栏「视觉主题」和偏好设置色板都会改 `magpie.theme`，小组件、壁纸、屏保一起生效。Reduce Motion 时粒子停止，配色和厚度仍保留。
 
 ### 2026-10-22（第四次）
