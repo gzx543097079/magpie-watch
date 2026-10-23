@@ -2,10 +2,13 @@ import SwiftUI
 
 struct UsageSparkline: View {
     let points: [UsagePoint]
-    var tint: Color = WatchTheme.seaBright
+    var tint: Color? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.watchPalette) private var palette
     @State private var reveal: CGFloat = 0
+
+    private var lineTint: Color { tint ?? palette.seaBright }
 
     var body: some View {
         GeometryReader { proxy in
@@ -37,7 +40,7 @@ struct UsageSparkline: View {
                     filledPath(samples: samples, width: width, height: height)
                         .fill(
                             LinearGradient(
-                                colors: [tint.opacity(0.22), tint.opacity(0.02)],
+                                colors: [lineTint.opacity(0.22), lineTint.opacity(0.02)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -52,7 +55,7 @@ struct UsageSparkline: View {
                         linePath
                             .trim(from: 0, to: reveal)
                             .stroke(
-                                tint.opacity(0.28),
+                                lineTint.opacity(0.28),
                                 style: StrokeStyle(lineWidth: 4.2, lineCap: .round, lineJoin: .round)
                             )
                             .blur(radius: 4)
@@ -62,7 +65,7 @@ struct UsageSparkline: View {
                         .trim(from: 0, to: reduceMotion ? 1 : reveal)
                         .stroke(
                             LinearGradient(
-                                colors: [tint.opacity(0.55), tint],
+                                colors: [lineTint.opacity(0.55), lineTint],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ),
@@ -70,12 +73,12 @@ struct UsageSparkline: View {
                         )
 
                     if !reduceMotion, reveal > 0.98, let last = samples.last {
-                        endPulse(at: last, tint: tint)
+                        endPulse(at: last, tint: lineTint)
                     }
                 } else {
                     Text("暂无用量数据")
                         .font(.custom(WatchTheme.bodyFont, size: 9))
-                        .foregroundStyle(WatchTheme.mist.opacity(0.7))
+                        .foregroundStyle(palette.mist.opacity(0.7))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
             }

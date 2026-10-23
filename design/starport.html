@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAGPIE · 数据星港</title>
+<style>
+:root { color-scheme: dark; --ink:#e9f2f5; --muted:#8ba9b8; --cyan:#58d9ed; --orange:#edab69; --red:#ff6f76; --bg:#040c16; }
+* { box-sizing:border-box; }
+html,body { margin:0; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--ink); font-family:"Avenir Next","PingFang SC",sans-serif; }
+canvas { display:block; }
+#scene { position:fixed; inset:0; z-index:0; }
+#shade { position:fixed; inset:0; pointer-events:none; z-index:1; background:radial-gradient(ellipse 75% 70% at 50% 45%,transparent 32%,rgba(1,8,18,.48) 100%); }
+#hud { position:fixed; inset:0; z-index:2; pointer-events:none; }
+#mast { position:absolute; left:3.4%; top:4.3%; display:flex; align-items:center; gap:17px; }
+.brand { width:42px;height:42px;border:1px solid rgba(118,236,244,.5);transform:rotate(45deg);display:grid;place-items:center;box-shadow:0 0 32px rgba(32,215,227,.16),inset 0 0 25px rgba(32,215,227,.12); }
+.brand b { display:block; transform:rotate(-45deg); font:600 21px "DIN Condensed","Avenir Next",sans-serif;color:#abf7f2; }
+#mast strong { font-size:17px;letter-spacing:.16em;font-weight:650; }
+#mast small { display:block;margin-top:5px;color:#94aeba;font-size:10px;letter-spacing:.13em; }
+#status { position:absolute;right:3.5%;top:5%;font:500 11px "Menlo",monospace;color:#b1c6cd;letter-spacing:.04em;text-align:right; }
+#status .lamp { display:inline-block;width:7px;height:7px;border-radius:50%;background:#68d8ad;box-shadow:0 0 13px #68d8ad;margin-right:8px; }
+#status.offline .lamp { background:var(--red);box-shadow:0 0 13px var(--red); }
+#status small { display:block;margin-top:7px;color:#728f9e;font:10px "PingFang SC",sans-serif; }
+.rail-title { position:absolute; top:17%;font-size:11px;letter-spacing:.32em;font-weight:650;color:#8ccad3; }
+#leftTitle { left:5%; } #rightTitle { right:5%;color:#e1b894; }
+.rail-title::after { content:"";display:block;width:100%;height:1px;background:currentColor;opacity:.45;margin-top:9px; }
+.node-label { position:absolute;white-space:nowrap; transform:translateY(-50%);transition:opacity .5s;min-width:135px;max-width:22vw; }
+.node-label.agent { text-align:right; transform:translate(-100%,-50%); }
+.node-label.model { text-align:left; }
+.node-label b { display:block;overflow:hidden;text-overflow:ellipsis;font-size:clamp(11px,1.1vw,17px);font-weight:650;line-height:1.15;text-shadow:0 2px 12px #030910; }
+.node-label small { display:block;margin-top:5px;color:#92b2bf;font:clamp(8px,.65vw,11px) "Menlo",monospace; }
+.node-label .num { color:#65dbe9; }
+.node-label.model .num { color:#f0aa72; }
+.node-label.dim { opacity:.45; }
+#hubLabel { position:absolute;left:50%;top:32%;transform:translateX(-50%);text-align:center;white-space:nowrap; }
+#hubLabel strong {font-size:clamp(14px,1.5vw,23px);letter-spacing:.24em;font-weight:650;text-shadow:0 0 24px rgba(80,215,235,.5)}
+#hubLabel span {display:block;margin-top:9px;font:10px "Menlo",monospace;letter-spacing:.12em;color:#80bbc7;}
+#lower {position:absolute;left:3.4%;right:3.4%;bottom:4.5%;display:flex;align-items:end;justify-content:space-between;border-top:1px solid rgba(153,222,233,.18);padding-top:18px;}
+#stats {display:flex;gap:clamp(20px,4vw,90px);}
+.metric small {display:block;color:#8aa7b5;font-size:10px;letter-spacing:.16em;margin-bottom:6px;}
+.metric b {font:500 clamp(20px,2.1vw,37px) "DIN Condensed","Avenir Next",sans-serif;letter-spacing:.025em;}
+.metric b.cyan {color:#85edf0}.metric b.orange {color:#f3be8a}.metric b.red {color:#ff8589}
+#message {font-size:12px;color:#a7bec8;letter-spacing:.08em;text-align:right;min-width:20vw;}
+#message b {color:#eac495;font-weight:600;}
+#message.error b {color:#ff8589;}
+#pet {position:absolute;left:3%;bottom:17%;height:96px;width:142px;filter:drop-shadow(0 14px 26px rgba(7,190,222,.18));}
+#pet svg {height:100%;width:100%;overflow:visible;animation:bob 3.4s ease-in-out infinite;}
+#pet text {font-family:"PingFang SC",sans-serif;}
+@keyframes bob {50%{transform:translateY(-8px) rotate(-2deg)}}
+#pet-bubble {position:absolute;left:120px;bottom:64px;white-space:nowrap;padding:8px 13px;border:1px solid rgba(101,220,232,.5);background:rgba(5,20,35,.87);border-radius:4px 14px 14px 14px;color:#cde9e9;font-size:11px;opacity:0;transition:opacity .35s;}
+#pet-bubble.show {opacity:1;}
+#demo {position:absolute;left:50%;top:4.7%;transform:translateX(-50%);padding:5px 12px;border:1px solid rgba(242,185,109,.42);color:#e2b87d;background:rgba(10,18,29,.72);font:10px "Menlo",monospace;letter-spacing:.2em;display:none;}
+#demo.on {display:block;}
+#fallback {display:none;position:fixed;inset:0;z-index:5;background:#061424;color:#d3edf0;place-items:center;text-align:center;font-size:16px;line-height:2;}
+@media (max-width:1100px) {#stats{gap:22px}.metric:nth-child(3){display:none}#hubLabel{top:28%}.rail-title{top:14%}.node-label{min-width:90px}#pet{transform:scale(.8);transform-origin:bottom left}}
+@media (prefers-reduced-motion:reduce) {#pet svg {animation:none}}
+</style>
+</head>
+<body>
+<div id="scene"></div><div id="shade"></div>
+<div id="hud">
+  <div id="mast"><div class="brand"><b>M</b></div><div><strong>MAGPIE 观测台</strong><small>LOCAL ROUTING OBSERVATORY</small></div></div>
+  <div id="status"><span class="lamp"></span><span id="statusText">等待本地网关</span><small>127.0.0.1:3425 · 仅在本机运行</small></div>
+  <div class="rail-title" id="leftTitle">智能体 · AGENTS</div><div class="rail-title" id="rightTitle">模型 · MODELS</div>
+  <div id="hubLabel"><strong>MAGPIE 网关</strong><span>所有请求在此选路</span></div>
+  <div id="labels"></div>
+  <div id="pet"><svg viewBox="0 0 150 106" role="img" aria-label="喜鹊鲸桌面宠物"><defs><linearGradient id="skin" x2=".8" y2="1"><stop stop-color="#99edf2"/><stop offset=".48" stop-color="#39c4d8"/><stop offset="1" stop-color="#13718f"/></linearGradient><linearGradient id="fin"><stop stop-color="#31b2ce"/><stop offset="1" stop-color="#0c557b"/></linearGradient></defs><path d="M113 57 Q138 32 144 41 Q139 53 146 72 Q130 78 111 69Z" fill="url(#fin)" stroke="#a1e5e7" stroke-opacity=".5"/><ellipse cx="71" cy="61" rx="57" ry="38" fill="url(#skin)" stroke="#a9f1e9" stroke-opacity=".7"/><path d="M28 71 Q64 91 110 65 Q103 94 74 99 Q45 99 28 71" fill="#ccf2ee" opacity=".92"/><path d="M69 26 Q67 10 78 5 M80 7 Q87 2 89 12" fill="none" stroke="#f7bd72" stroke-width="4" stroke-linecap="round"/><circle cx="81" cy="7" r="4" fill="#ffdc9b"/><ellipse cx="53" cy="52" rx="4" ry="6" fill="#112b3c"/><ellipse cx="83" cy="51" rx="4" ry="6" fill="#112b3c"/><circle cx="54" cy="49" r="1.5" fill="white"/><circle cx="84" cy="48" r="1.5" fill="white"/><path d="M63 66 Q70 72 78 66" fill="none" stroke="#14576e" stroke-width="2.5" stroke-linecap="round"/><ellipse cx="38" cy="64" rx="9" ry="4" fill="#f29aa0" opacity=".55"/><ellipse cx="98" cy="63" rx="9" ry="4" fill="#f29aa0" opacity=".55"/><path d="M89 78 Q102 92 111 77" fill="none" stroke="#54bad0" stroke-width="12" stroke-linecap="round"/></svg><div id="pet-bubble"></div></div>
+  <div id="demo">演示数据 · DEMO</div>
+  <div id="lower"><div id="stats"><div class="metric"><small>今日请求</small><b id="calls">—</b></div><div class="metric"><small>在途链路</small><b class="cyan" id="active">—</b></div><div class="metric"><small>模型数量</small><b class="orange" id="models">—</b></div><div class="metric"><small>错误</small><b class="red" id="errors">—</b></div></div><div id="message">当前无在途请求</div></div>
+</div>
+<div id="fallback">无法启动三维画面<br>请在应用偏好设置中关闭动态壁纸，稍后重试</div>
+<script src="./three.min.js"></script>
+<script>
+(()=>{'use strict';
+if(!window.THREE){document.getElementById('fallback').style.display='grid';return}
+const T=THREE, params=new URLSearchParams(location.search), demo=params.has('demo'), shot=Number(params.get('shot')||0), reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const palette={cyan:0x57deec,orange:0xeeb27b,red:0xff6976,white:0xd8f6f3,deep:0x071e2b,blue:0x5399c9};
+let renderer;
+try{renderer=new T.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power',preserveDrawingBuffer:!!shot})}catch(e){document.getElementById('fallback').style.display='grid';return}
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.setSize(innerWidth,innerHeight);renderer.outputEncoding=T.sRGBEncoding;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=.85;
+document.getElementById('scene').append(renderer.domElement);
+const scene=new T.Scene();scene.fog=new T.FogExp2(0x071523,.017);scene.background=new T.Color(0x071523);
+const camera=new T.PerspectiveCamera(42,innerWidth/innerHeight,.1,170); camera.position.set(0,7,27);camera.lookAt(0,0,0);
+scene.add(new T.HemisphereLight(0x9ffaff,0x0b1831,1.3));
+const key=new T.PointLight(0x68daeb,8,42,2);key.position.set(0,5,8);scene.add(key);
+const fill=new T.PointLight(0xf4aa70,6,31,2);fill.position.set(12,3,4);scene.add(fill);
+const dummy=new T.Object3D(), clock=new T.Clock();
+const matte=(color,extra={})=>new T.MeshStandardMaterial({color,metalness:.68,roughness:.32,...extra});
+const emissive=(color,opacity=.7)=>new T.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,side:T.DoubleSide});
+const coreMat=matte(0x153948,{emissive:0x064653,emissiveIntensity:1});
+const ringGeo=new T.TorusGeometry(1,.014,6,128);
+function haloTexture(){const c=document.createElement('canvas');c.width=c.height=128;let x=c.getContext('2d'),g=x.createRadialGradient(64,64,2,64,64,64);g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.10,'rgba(184,240,248,.55)');g.addColorStop(.32,'rgba(74,194,219,.12)');g.addColorStop(1,'rgba(51,148,210,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new T.CanvasTexture(c)}
+const haloTex=haloTexture();
+function glow(parent,color,size,opacity){let m=new T.SpriteMaterial({map:haloTex,color,transparent:true,opacity,blending:T.AdditiveBlending,depthWrite:false});let p=new T.Sprite(m);p.scale.set(size,size,1);parent.add(p);return p}
+function tube(points,radius,material,segments=80){const curve=new T.CatmullRomCurve3(points);return {curve,mesh:new T.Mesh(new T.TubeGeometry(curve,segments,radius,7,false),material)}}
+const floor=new T.Group();scene.add(floor);
+const floorMat=emissive(0x327b92,.14);
+for(let x=-38;x<=38;x+=2){let g=new T.BufferGeometry().setFromPoints([new T.Vector3(x,-5,-12),new T.Vector3(x,-5,53)]);floor.add(new T.Line(g,new T.LineBasicMaterial({color:0x3b8b9f,transparent:true,opacity:.2})))}
+for(let z=-12;z<=53;z+=2){let g=new T.BufferGeometry().setFromPoints([new T.Vector3(-38,-5,z),new T.Vector3(38,-5,z)]);floor.add(new T.Line(g,new T.LineBasicMaterial({color:0x3b8b9f,transparent:true,opacity:.17})))}
+const plinth=new T.Mesh(new T.CylinderGeometry(3.2,4.3,.26,96),new T.MeshBasicMaterial({color:0x08202b,transparent:true,opacity:.22,depthWrite:false}));plinth.position.set(0,-4.83,0);scene.add(plinth);
+const floorRings=[];
+for(let r of [3.3,4,4.8]){let mesh=new T.Mesh(new T.TorusGeometry(r,.018,5,128),emissive(r===3.3?palette.cyan:0x438196,.23));mesh.rotation.x=Math.PI/2;mesh.position.y=-4.61;scene.add(mesh);floorRings.push(mesh)}
+const sweepRings=[];
+for(let i=0;i<2;i++){let ring=new T.Mesh(new T.TorusGeometry(1,.026,5,96),emissive(palette.cyan,.16));ring.rotation.x=Math.PI/2;ring.position.set(0,-4.57,0);scene.add(ring);sweepRings.push(ring)}
+// 网关近景：数层机械环绕一枚高亮棱核转动。
+const hub=new T.Group();hub.position.set(0,.5,1.2);scene.add(hub);
+const cage=new T.Mesh(new T.IcosahedronGeometry(1.5,1),matte(0x1b5061,{flatShading:true,emissive:0x0c7e94,emissiveIntensity:.5}));hub.add(cage);
+const inner=new T.Mesh(new T.IcosahedronGeometry(.93,1),matte(0x78e4e9,{flatShading:true,emissive:0x30c8d9,emissiveIntensity:1.5,metalness:.4}));hub.add(inner);
+let gatewayHalo=glow(hub,palette.cyan,8,.35);
+const hoops=[];
+for(let i=0;i<3;i++){let ring=new T.Mesh(new T.TorusGeometry(2.05+i*.46,.035,8,128),emissive(i===1?0xebac7e:0x78dae7,.48));ring.rotation.set(.35+i*.5,.2+i*.5,i*.64);hub.add(ring);hoops.push(ring)}
+const orbiters=[];
+for(let i=0;i<5;i++){let point=glow(hub,i%2?palette.orange:palette.cyan,.72,.52);orbiters.push(point)}
+for(let i=0;i<16;i++){let a=i/16*Math.PI*2;let t=new T.Mesh(new T.BoxGeometry(.045,.36,.09),emissive(palette.cyan,.55));t.position.set(Math.cos(a)*2.92,Math.sin(a)*2.92,0);t.rotation.z=-a;hub.add(t)}
+// 星港上方的体积尘埃，远中近三层带视差。
+const stars=[];let rng=14352;function rand(){rng=(rng*1664525+1013904223)>>>0;return rng/4294967296}
+for(let layer=0;layer<3;layer++){const count=[190,95,35][layer],positions=new Float32Array(count*3);for(let i=0;i<count;i++){positions[i*3]=(rand()-.5)*75;positions[i*3+1]=(rand()-.5)*38+5;positions[i*3+2]=-45+layer*20+rand()*12}let g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(positions,3));let points=new T.Points(g,new T.PointsMaterial({color:layer===2?0xa3e1ef:0x7293af,size:[.065,.09,.15][layer],transparent:true,opacity:[.32,.48,.58][layer],sizeAttenuation:true,depthWrite:false}));scene.add(points);stars.push(points)}
+const nodeGeo=new T.IcosahedronGeometry(1,1),shellGeo=new T.IcosahedronGeometry(1.24,1);
+const nodes=new Map(), labels=document.getElementById('labels'), routes=new Map(), particles=[];
+let pulseEnergy=0;const pulseBursts=[];
+function burst(color,point){if(reduced)return;let mesh=new T.Mesh(new T.RingGeometry(.56,.62,48),emissive(color,.65));mesh.position.copy(point);mesh.rotation.x=-.32;scene.add(mesh);pulseBursts.push({mesh,age:0});pulseEnergy=Math.min(1.8,pulseEnergy+.65)}
+const pipeMuted=emissive(0x4c8590,.13);
+function posFor(side,index,n){let y=n===1?0:(n-1-2*index)*(n>5?4.8:3.6)/Math.max(1,n-1),x=side*(9.3+Math.abs(y)*.08),z=[-.6,.8,0,-.8,.5,-.3,.7,-.5][index%8];return new T.Vector3(x,y,z)}
+function makeNode(data,side,index,total){let color=side<0?palette.cyan:palette.orange,g=new T.Group();let pos=posFor(side,index,total);g.position.copy(pos);scene.add(g);
+ let size=.55+Math.min(1,Math.sqrt(Math.max(0,data.calls||0)/2200))*.47;
+ let shell=new T.Mesh(shellGeo,matte(side<0?0x1c5261:0x5a392b,{wireframe:true,transparent:true,opacity:.32}));shell.scale.setScalar(size);g.add(shell);
+ let solid=new T.Mesh(nodeGeo,matte(side<0?0x126476:0x7f5038,{emissive:color,emissiveIntensity:.14,flatShading:true}));solid.scale.setScalar(size*.68);g.add(solid);
+ let light=glow(g,color,size*4,.43);
+ let torus=new T.Mesh(ringGeo,emissive(color,.63));torus.scale.setScalar(size*1.35);torus.rotation.x=.68;g.add(torus);
+ let leader=new T.Mesh(new T.CylinderGeometry(.008,.008,Math.abs(pos.y+4.6),4),emissive(color,.15));leader.position.set(0,(-4.6-pos.y)/2,0);g.add(leader);
+ let label=document.createElement('div');label.className='node-label '+(side<0?'agent':'model');labels.append(label);
+ return {id:data.id,side,g,shell,solid,torus,light,label,pos,index,color,size,opacity:1,calls:data.calls||0,name:data.name||'未命名',sub:data.sub||'',target:pos.clone(),alive:true}; }
+function updateNode(n,d,index,total){n.alive=true;n.index=index;n.target.copy(posFor(n.side,index,total));n.name=d.name||n.name;n.calls=d.calls||0;n.sub=d.sub||'';n.size=.55+Math.min(1,Math.sqrt(n.calls/2200))*.47;n.shell.scale.setScalar(n.size);n.solid.scale.setScalar(n.size*.68);n.torus.scale.setScalar(n.size*1.35);n.light.scale.setScalar(n.size*4);}
+function reconcile(list,side){const prefix=side<0?'a:':'m:',seen=new Set();list.slice(0,8).forEach((d,i)=>{const id=prefix+d.id;seen.add(id);let n=nodes.get(id);if(!n){n=makeNode(d,side,i,Math.min(8,list.length));nodes.set(id,n)}else updateNode(n,d,i,Math.min(8,list.length))});for(const [id,n] of nodes)if(id.startsWith(prefix)&&!seen.has(id))n.alive=false;}
+function control(a,b){let sign=Math.sign(b.x-a.x),lift=Math.abs(a.y-b.y)*.12;return [a.clone(),new T.Vector3(a.x+sign*2,a.y+lift,a.z+1.2),new T.Vector3(b.x-sign*2,b.y+lift,b.z+1),b.clone()]}
+function clearRoute(r){scene.remove(r.base,r.glow);r.base.geometry.dispose();r.glow.geometry.dispose();r.base.material.dispose();r.glow.material.dispose();for(const mote of r.motes){scene.remove(mote);mote.material.dispose()}}
+function rebuildPipes(){for(let [id,r] of routes){if(!nodes.has(id)||!nodes.get(id).alive){clearRoute(r);routes.delete(id)}}for(let [id,n] of nodes){if(!n.alive)continue;let target=n.side<0?hub.position:n.target.clone(),start=n.side<0?n.target.clone():hub.position;let points=control(start,target);let old=routes.get(id);if(old && old.index===n.index && old.end.distanceTo(n.target)<.01)continue;if(old){clearRoute(old)}let c=new T.CubicBezierCurve3(...points);let material=emissive(n.color,.22);let base=new T.Mesh(new T.TubeGeometry(c,45,.025,6,false),material);let luminous=new T.Mesh(new T.TubeGeometry(c,45,.065,6,false),emissive(n.color,.08));let motes=[];for(let i=0;i<3;i++){let mote=glow(scene,n.color,.45,.3);motes.push(mote)}scene.add(base,luminous);routes.set(id,{base,glow:luminous,motes,curve:c,index:n.index,end:n.target.clone(),brightness:0,color:n.color})}}
+const flightGeo=new T.SphereGeometry(.15,12,8);
+function clearParticle(p){scene.remove(p.mesh);p.mesh.material.dispose();p.light.material.dispose();for(const spark of p.trail){scene.remove(spark);spark.material.dispose()}}
+function spawn(flow){let id=flow.id;if(particles.some(p=>p.id===id))return;let agent=nodes.get('a:'+flow.agentID),model=nodes.get('m:'+flow.destinationID);if(!agent||!model)return;
+ let stage=flow.stage||'incoming',age=stage==='returning'?(flow.outcome==='rateLimited'?2.1:flow.outcome==='ok'?5.2:4.9):stage==='outbound'?2:0;
+ let outcome=flow.outcome||'ok';let mesh=new T.Mesh(flightGeo,emissive(outcome==='ok'?palette.white:palette.red,.94));scene.add(mesh);let light=glow(mesh,outcome==='ok'?palette.cyan:palette.red,1.4,.65);let trail=[];for(let i=0;i<6;i++)trail.push(glow(scene,outcome==='ok'?palette.cyan:palette.red,.7-i*.075,.35));particles.push({id,mesh,light,trail,agent:agent.id,model:model.id,stage,outcome,age,lastLeg:'',done:stage==='returning',status:flow.statusCode||0});burst(outcome==='ok'?palette.cyan:palette.red,stage==='returning'?model.g.position:agent.g.position);}
+const known=new Set();let data={agents:[],models:[],flows:[],online:false,calls:0,errors:0,pet:true};
+window.setMagpieData=function(next){if(!next || typeof next!=='object')return;data={...data,...next};reconcile(Array.isArray(data.agents)?data.agents:[],-1);reconcile(Array.isArray(data.models)?data.models:[],1);rebuildPipes();refreshLabels();const flows=data.online&&Array.isArray(data.flows)?data.flows:[];const current=new Set(flows.map(flow=>flow.id));for(let i=particles.length-1;i>=0;i--)if(!current.has(particles[i].id)){clearParticle(particles[i]);particles.splice(i,1)}for(const flow of flows){let p=particles.find(p=>p.id===flow.id);if(!known.has(flow.id)){known.add(flow.id);spawn(flow)}else if(p&&flow.stage==='returning'&&!p.done){p.stage='returning';p.outcome=flow.outcome||'ok';p.status=flow.statusCode||0;p.age=p.outcome==='rateLimited'?2.1:p.outcome==='ok'?5.2:4.9;p.done=true;p.mesh.material.color.setHex(p.outcome==='ok'?palette.white:palette.red);p.light.material.color.setHex(p.outcome==='ok'?palette.cyan:palette.red);p.trail.forEach(spark=>spark.material.color.setHex(p.outcome==='ok'?palette.orange:palette.red));burst(p.outcome==='ok'?palette.orange:palette.red,p.outcome==='rateLimited'?hub.position:nodes.get(p.model)?.g.position||hub.position)}}if(known.size>500){const oldest=[...known].slice(0,known.size-300);oldest.forEach(id=>known.delete(id))}
+ document.getElementById('status').classList.toggle('offline',!data.online);document.getElementById('statusText').textContent=data.online?'本地网关在线':'本地网关离线 · 等待重连';document.getElementById('calls').textContent=data.calls==null?'—':Number(data.calls).toLocaleString();document.getElementById('models').textContent=(data.models||[]).length||'—';document.getElementById('errors').textContent=data.errors==null?'—':Number(data.errors).toLocaleString();document.getElementById('pet').style.display=data.pet===false?'none':'block';if(!flows.length&&!particles.length){document.getElementById('message').textContent=data.online?'当前无在途请求':'网关离线 · 等待重连'}
+};
+function notify(text,error=false){const msg=document.getElementById('message');msg.innerHTML='<b></b>';msg.firstChild.textContent=text;msg.classList.toggle('error',error);const bubble=document.getElementById('pet-bubble');bubble.textContent=error?'呀，路由出问题了…':'请求正在回流～';bubble.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>bubble.classList.remove('show'),3400)}
+function clearNode(n){scene.remove(n.g);n.label.remove();n.g.traverse(o=>{if(o.material)o.material.dispose()});nodes.delete(n.id)}
+function refreshLabels(){const total=Math.max(1,(data.models||[]).reduce((sum,o)=>sum+(o.calls||0),0));for(const n of nodes.values()){let b=n.label.querySelector('b'),s=n.label.querySelector('small');if(!b){b=document.createElement('b');s=document.createElement('small');n.label.append(b,s)}b.textContent=n.name;s.textContent=n.sub?n.sub+' · ':'';let num=s.querySelector('.num');if(!num){num=document.createElement('span');num.className='num';s.append(num)}num.textContent=n.side<0?Number(n.calls).toLocaleString()+' 次':n.calls?Math.round(n.calls/total*100)+'%':'等待'}}
+function decorate(t,delta){pulseEnergy=Math.max(0,pulseEnergy-delta*.65);hub.rotation.y=t*.24;hub.rotation.z=Math.sin(t*.22)*.085;inner.rotation.y=-t*.64;inner.rotation.x=t*.2;cage.rotation.y=t*.17;cage.material.emissiveIntensity=.55+Math.sin(t*1.8)*.22+pulseEnergy*.5;gatewayHalo.material.opacity=.3+Math.sin(t*1.8)*.09+pulseEnergy*.16;hoops.forEach((o,i)=>{o.rotation.x=.35+i*.5+Math.sin(t*.55+i)*.32;o.rotation.y=t*(i%2?.26:-.32);o.material.opacity=.39+Math.sin(t*2+i)*.11+pulseEnergy*.14});orbiters.forEach((o,i)=>{let a=t*(i%2?-.55:.7)+i*Math.PI*2/5,r=2.3+i%3*.32;o.position.set(Math.cos(a)*r,Math.sin(a*1.2+i)*r*.64,Math.sin(a)*r*.55);o.material.opacity=.38+.18*Math.sin(t*3+i)});floorRings.forEach((r,i)=>r.material.opacity=.16+Math.sin(t*1.2-i)*.07+pulseEnergy*.09);sweepRings.forEach((r,i)=>{let phase=(t*.24+i*.5)%1;r.scale.setScalar(1.15+phase*4.3);r.material.opacity=(1-phase)*(.13+pulseEnergy*.12)});for(let i=pulseBursts.length-1;i>=0;i--){let burst=pulseBursts[i];burst.age+=delta;burst.mesh.scale.setScalar(1+burst.age*3.8);burst.mesh.material.opacity=Math.max(0,.65-burst.age*.85);if(burst.age>.8){scene.remove(burst.mesh);burst.mesh.geometry.dispose();burst.mesh.material.dispose();pulseBursts.splice(i,1)}}stars.forEach((s,i)=>{s.rotation.y=Math.sin(t*.12+i)*.035;s.position.x=Math.sin(t*.08+i*2)*(.2+i*.15)});
+ for(const n of nodes.values()){n.g.position.lerp(n.target,Math.min(1,delta*2.5));n.g.position.y+=Math.sin(t*1.25+n.index*1.4+(n.side<0?0:1))*.0025;n.g.rotation.y+=delta*(n.side<0?.35:-.31);n.torus.rotation.z=t*.41+n.index;n.light.material.opacity=.29+.15*Math.sin(t*1.8+n.index)+pulseEnergy*.06;n.solid.material.emissiveIntensity=.13+.08*Math.sin(t*1.8+n.index);n.opacity+=(n.alive?1:-1)*Math.min(1,delta*2);n.opacity=Math.min(1,Math.max(0,n.opacity));n.label.style.opacity=n.opacity.toFixed(2);n.label.classList.toggle('dim',n.calls===0);if(!n.alive&&n.opacity<=.01)clearNode(n)}
+ for(const r of routes.values()){r.brightness=Math.max(0,r.brightness-delta*.9);let breath=.5+.5*Math.sin(t*1.45+r.index*1.7);r.base.material.opacity=.12+breath*.075+r.brightness*.44;r.glow.material.opacity=.035+breath*.075+r.brightness*.23;r.motes.forEach((m,i)=>{let u=(t*(.065+r.brightness*.09)+i/3+r.index*.17)%1;m.position.copy(r.curve.getPoint(u));m.material.opacity=(.14+breath*.13+r.brightness*.3)*Math.sin(Math.PI*u);m.scale.setScalar(.35+r.brightness*.2)})}
+ let active=0;for(let i=particles.length-1;i>=0;i--){let p=particles[i],a=nodes.get(p.agent),m=nodes.get(p.model);if(!a||!m||!a.alive||!m.alive){clearParticle(p);particles.splice(i,1);continue}p.age+=delta;let age=p.age;if(age>13){clearParticle(p);particles.splice(i,1);continue}let left=routes.get(a.id),right=routes.get(m.id);if(!left||!right)continue;let point,leg;
+ if(!p.done && age>=5.15){p.age=4.45;age=4.45}
+ if(age<1.8){leg='in';point=left.curve.getPoint(Math.min(1,age/1.8));left.brightness=1}
+ else if(age<2.5){leg='hub';point=hub.position.clone();point.y+=Math.sin(t*3+p.age)*.18}
+ else if(p.done && p.outcome==='rateLimited'){let u=Math.min(1,(age-2.5)/1.7);leg='returnAgent';point=left.curve.getPoint(1-u);left.brightness=1}
+ else if(age<4){leg='out';point=right.curve.getPoint(Math.min(1,(age-2.5)/1.5));right.brightness=1}
+ else if(age<5.2){leg='wait';point=m.g.position.clone();point.y+=.4+Math.sin(t*4)*.12;right.brightness=.8}
+ else if(age<7){leg='returnModel';point=right.curve.getPoint(Math.max(0,1-(age-5.2)/1.8));right.brightness=1}
+ else {leg='returnAgent';point=left.curve.getPoint(Math.max(0,1-(age-7)/1.7));left.brightness=1}
+ if(p.done&&p.outcome!=='ok'){let r=p.outcome==='rateLimited'?left:right;r.glow.material.color.setHex(p.outcome==='timedOut'?0x7e9ca8:palette.red);r.brightness=1}
+ if(leg!==p.lastLeg){if(leg==='hub'||leg==='wait'||leg==='returnAgent')burst(p.done&&p.outcome!=='ok'?palette.red:leg==='wait'?palette.orange:palette.cyan,leg==='wait'?m.g.position:hub.position);if(p.done && p.outcome!=='ok' && (leg==='returnModel'||leg==='returnAgent')){notify(p.outcome==='timedOut'?'上游超时 · 响应已回传':p.outcome==='rateLimited'?'429 · 网关限流':p.outcome==='disconnected'?'连接中断 · 路由已记录':`${p.status||'上游'} · 请求失败`,true)}else if(leg==='returnModel' && p.done)notify('模型响应已沿原路返回');p.lastLeg=leg}
+ p.mesh.position.copy(point);p.trail.forEach((spark,i)=>{let offset=(i+1)*.075,u;if(leg==='in')u=Math.max(0,age/1.8-offset);else if(leg==='out')u=Math.max(0,(age-2.5)/1.5-offset);else if(leg==='returnModel')u=Math.min(1,1-(age-5.2)/1.8+offset);else if(leg==='returnAgent')u=Math.min(1,1-(p.outcome==='rateLimited'?(age-2.5)/1.7:(age-7)/1.7)+offset);spark.position.copy(leg==='in'||leg==='returnAgent'?left.curve.getPoint(u):leg==='out'||leg==='returnModel'?right.curve.getPoint(u):point);spark.material.opacity=(leg==='hub'||leg==='wait'?.07:.44)*(1-i/7);spark.scale.setScalar(.74-i*.085)});p.mesh.scale.setScalar(p.done&&p.outcome!=='ok'?.77:1);p.light.scale.setScalar(1.3+Math.sin(t*6)*.22);active++;if(age>(p.outcome==='rateLimited'&&p.done?4.2:8.8)){clearParticle(p);particles.splice(i,1)}}
+ document.getElementById('active').textContent=active;
+}
+function placeLabels(){const width=innerWidth,height=innerHeight;for(const n of nodes.values()){const v=n.g.position.clone().project(camera);let x=(v.x*.5+.5)*width,y=(-v.y*.5+.5)*height;let margin=Math.max(115,width*.06);x=Math.max(margin,Math.min(width-margin,x));let depth=Math.max(.78,Math.min(1.32,1.12-n.g.position.z*.025));let dx=n.side<0?-82:82;n.label.style.left=(x+dx)+'px';n.label.style.top=Math.max(height*.23,Math.min(height*.83,y))+'px';n.label.style.fontSize=(12*depth)+'px'}}
+function resize(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));placeLabels()}window.addEventListener('resize',resize);
+function frame(){requestAnimationFrame(frame);let delta=Math.min(clock.getDelta(),.05);let t=performance.now()/1000;if(reduced)delta=0;camera.position.x=reduced?0:Math.sin(t*.12)*1.25;camera.position.y=reduced?7:7+Math.sin(t*.08)*.35;camera.lookAt(0,0,0);decorate(t,delta);placeLabels();renderer.render(scene,camera)}
+if(demo){document.getElementById('demo').classList.add('on');let demoAgents=['Claude Code','Claude Desktop','Codex','Cursor','Raycast'],demoModels=['claude-opus-5','gpt-6-sol','deepseek-v4.1-flash','gemini-pro','qwen-max'];let demoData={agents:demoAgents.map((name,i)=>({id:'a'+i,name,calls:[3142,1246,885,488,219][i],sub:'今日调用'})),models:demoModels.map((name,i)=>({id:'m'+i,name,calls:[3516,1940,1543,670,310][i],sub:['Anthropic','OpenAI','DeepSeek','Google','Alibaba'][i]})),flows:[],online:true,calls:7619,errors:19,pet:true};window.setMagpieData(demoData);let sequence=0;function demoTick(){let i=sequence%5,flow={id:'sample'+sequence,agentID:'a'+i, destinationID:'m'+((i+sequence)%5),stage:'incoming',outcome:'ok'};demoData.flows=[flow];window.setMagpieData(demoData);setTimeout(()=>{flow.stage='returning';flow.outcome=sequence%7===0?'rateLimited':sequence%11===0?'timedOut':'ok';window.setMagpieData(demoData)},4000);sequence++;}demoTick();if(!shot)setInterval(demoTick,3200)}
+frame();if(shot){setTimeout(()=>{document.title='ready'},1000)}
+})();
+</script>
+</body>
+</html>

@@ -44,6 +44,14 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(isWallpaperEnabled, forKey: Keys.wallpaperEnabled) }
     }
 
+    @Published var isPetEnabled: Bool {
+        didSet { defaults.set(isPetEnabled, forKey: Keys.petEnabled) }
+    }
+
+    @Published var theme: WatchThemeID {
+        didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
+    }
+
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -66,6 +74,8 @@ final class AppModel: ObservableObject {
         let savedIdleMinutes = defaults.object(forKey: Keys.idleMinutes) as? Int
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
         let savedWallpaper = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool
+        let savedPet = defaults.object(forKey: Keys.petEnabled) as? Bool
+        let savedTheme = defaults.string(forKey: Keys.theme)
 
         widgetExpanded = savedExpanded ?? true
         isWidgetVisible = savedVisible ?? false
@@ -75,6 +85,8 @@ final class AppModel: ObservableObject {
         idleMinutes = savedIdleMinutes ?? 5
         maskEmails = savedMaskEmails ?? true
         isWallpaperEnabled = savedWallpaper ?? false
+        isPetEnabled = savedPet ?? true
+        theme = WatchThemeID(rawValue: savedTheme ?? "") ?? .aurora
     }
 
     deinit {
@@ -152,6 +164,16 @@ final class AppModel: ObservableObject {
         let input = Double(usage?.input ?? 0)
         guard cache + input > 0 else { return 0 }
         return cache / (cache + input) * 100
+    }
+
+    /// 壁纸和屏保用的多 agent 舞台。小组件仍使用单路由的 `routePresentation`。
+    var wallpaperBoard: WallpaperFlowBoard {
+        WallpaperBoardBuilder.make(
+            usage: usage,
+            trace: isOnline ? trace : nil,
+            service: service,
+            isOnline: isOnline
+        )
     }
 
     var routePresentation: RoutePresentation {
@@ -382,4 +404,6 @@ private enum Keys {
     static let idleMinutes = "magpie.screensaver.idleMinutes"
     static let maskEmails = "magpie.privacy.maskEmails"
     static let wallpaperEnabled = "magpie.wallpaper.enabled"
+    static let petEnabled = "magpie.wallpaper.petEnabled"
+    static let theme = "magpie.theme"
 }

@@ -218,7 +218,8 @@ final class WallpaperWindowController {
         window.hasShadow = false
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(
-            rootView: WallpaperView(model: model)
+            rootView: WallpaperWebScene(model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
         window.setFrame(screen.frame, display: true)
         window.orderFrontRegardless()

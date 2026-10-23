@@ -1,53 +1,167 @@
 import AppKit
 import SwiftUI
 
-// MARK: - 配色
+// MARK: - 主题
 
-enum WatchTheme {
-    // 「极光暮色」色板：近黑蓝紫的夜空底，青色能量主调，
-    // 紫罗兰做氛围，琥珀专用于输出 token 与费用。
-    static let abyss = Color(red: 0.016, green: 0.024, blue: 0.055)
-    static let deep = Color(red: 0.043, green: 0.070, blue: 0.130)
-    static let panel = Color(red: 0.065, green: 0.100, blue: 0.175)
-    static let sea = Color(red: 0.130, green: 0.830, blue: 0.930)
-    static let seaBright = Color(red: 0.400, green: 0.910, blue: 0.980)
-    static let ice = Color(red: 0.945, green: 0.960, blue: 0.985)
-    static let mist = Color(red: 0.560, green: 0.635, blue: 0.720)
-    static let amber = Color(red: 0.985, green: 0.750, blue: 0.290)
-    static let coral = Color(red: 0.985, green: 0.370, blue: 0.400)
-    static let blue = Color(red: 0.380, green: 0.645, blue: 0.985)
-    static let green = Color(red: 0.205, green: 0.830, blue: 0.600)
-    static let violet = Color(red: 0.655, green: 0.545, blue: 0.980)
-    static let hairline = Color.white.opacity(0.12)
+/// 可切换的视觉主题。语义角色在每套配色里保持不变：
+/// `sea` / `seaBright` 是主能量与缓存流，`blue` 是输入流，
+/// `amber` 是输出流和费用，`violet` 是氛围，`coral` 是错误。
+enum WatchThemeID: String, CaseIterable, Identifiable {
+    case aurora
+    case noir
+    case ion
+    case ember
 
-    /// 主能量渐变：青 → 紫，用于强调元素与流光。
-    static let aurora = LinearGradient(
-        colors: [seaBright, violet],
-        startPoint: .leading,
-        endPoint: .trailing
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .aurora: return "极光暮色"
+        case .noir: return "黑金夜宴"
+        case .ion: return "离子极昼"
+        case .ember: return "熔核"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .aurora: return "青紫能量，琥珀回流"
+        case .noir: return "香槟与银，红宝石回流"
+        case .ion: return "冷白与钴蓝，品红回流"
+        case .ember: return "熔岩上行，冷青回流"
+        }
+    }
+
+    var palette: WatchPalette {
+        switch self {
+        case .aurora: return .aurora
+        case .noir: return .noir
+        case .ion: return .ion
+        case .ember: return .ember
+        }
+    }
+}
+
+struct WatchPalette: Equatable {
+    var abyss: Color
+    var deep: Color
+    var panel: Color
+    var sea: Color
+    var seaBright: Color
+    var ice: Color
+    var mist: Color
+    var amber: Color
+    var coral: Color
+    var blue: Color
+    var green: Color
+    var violet: Color
+    var hairline: Color
+
+    /// 上行缓存流。
+    var cache: Color { seaBright }
+    /// 上行输入流。
+    var input: Color { blue }
+    /// 下行输出流，同时用于费用。
+    var output: Color { amber }
+
+    func tone(_ tone: RouteTone) -> Color {
+        switch tone {
+        case .teal: return sea
+        case .amber: return amber
+        case .blue: return blue
+        case .green: return green
+        case .coral: return coral
+        case .neutral: return mist
+        }
+    }
+
+    static let aurora = WatchPalette(
+        abyss: rgb(0.016, 0.024, 0.055),
+        deep: rgb(0.043, 0.070, 0.130),
+        panel: rgb(0.065, 0.100, 0.175),
+        sea: rgb(0.130, 0.830, 0.930),
+        seaBright: rgb(0.400, 0.910, 0.980),
+        ice: rgb(0.945, 0.960, 0.985),
+        mist: rgb(0.560, 0.635, 0.720),
+        amber: rgb(0.985, 0.750, 0.290),
+        coral: rgb(0.985, 0.370, 0.400),
+        blue: rgb(0.380, 0.645, 0.985),
+        green: rgb(0.205, 0.830, 0.600),
+        violet: rgb(0.655, 0.545, 0.980),
+        hairline: Color.white.opacity(0.12)
     )
 
+    static let noir = WatchPalette(
+        abyss: rgb(0.035, 0.026, 0.018),
+        deep: rgb(0.078, 0.056, 0.034),
+        panel: rgb(0.112, 0.084, 0.052),
+        sea: rgb(0.860, 0.690, 0.340),
+        seaBright: rgb(0.980, 0.860, 0.520),
+        ice: rgb(0.970, 0.940, 0.880),
+        mist: rgb(0.690, 0.610, 0.500),
+        amber: rgb(0.910, 0.280, 0.380),
+        coral: rgb(0.980, 0.420, 0.300),
+        blue: rgb(0.760, 0.830, 0.900),
+        green: rgb(0.640, 0.760, 0.420),
+        violet: rgb(0.720, 0.460, 0.300),
+        hairline: Color.white.opacity(0.12)
+    )
+
+    static let ion = WatchPalette(
+        abyss: rgb(0.010, 0.018, 0.042),
+        deep: rgb(0.028, 0.052, 0.105),
+        panel: rgb(0.046, 0.078, 0.150),
+        sea: rgb(0.420, 0.760, 1.000),
+        seaBright: rgb(0.820, 0.960, 1.000),
+        ice: rgb(0.940, 0.965, 1.000),
+        mist: rgb(0.520, 0.620, 0.740),
+        amber: rgb(0.980, 0.360, 0.780),
+        coral: rgb(1.000, 0.320, 0.340),
+        blue: rgb(0.280, 0.460, 1.000),
+        green: rgb(0.250, 0.900, 0.820),
+        violet: rgb(0.540, 0.380, 1.000),
+        hairline: Color.white.opacity(0.14)
+    )
+
+    static let ember = WatchPalette(
+        abyss: rgb(0.042, 0.014, 0.012),
+        deep: rgb(0.092, 0.030, 0.022),
+        panel: rgb(0.132, 0.048, 0.034),
+        sea: rgb(0.960, 0.380, 0.150),
+        seaBright: rgb(0.990, 0.560, 0.180),
+        ice: rgb(0.980, 0.930, 0.890),
+        mist: rgb(0.710, 0.560, 0.480),
+        amber: rgb(0.280, 0.880, 0.920),
+        coral: rgb(1.000, 0.280, 0.220),
+        blue: rgb(0.990, 0.860, 0.620),
+        green: rgb(0.560, 0.820, 0.380),
+        violet: rgb(0.780, 0.200, 0.240),
+        hairline: Color.white.opacity(0.12)
+    )
+}
+
+private struct WatchPaletteKey: EnvironmentKey {
+    static let defaultValue = WatchThemeID.aurora.palette
+}
+
+extension EnvironmentValues {
+    var watchPalette: WatchPalette {
+        get { self[WatchPaletteKey.self] }
+        set { self[WatchPaletteKey.self] = newValue }
+    }
+}
+
+private func rgb(_ red: Double, _ green: Double, _ blue: Double) -> Color {
+    Color(red: red, green: green, blue: blue)
+}
+
+// MARK: - 字体
+
+enum WatchTheme {
     static let displayFont = "DIN Condensed"
     static let displayCNFont = "PingFang SC"
     static let bodyFont = "Avenir Next"
     static let monoFont = "Menlo"
-
-    static func tone(_ tone: RouteTone) -> Color {
-        switch tone {
-        case .teal:
-            return sea
-        case .amber:
-            return amber
-        case .blue:
-            return blue
-        case .green:
-            return green
-        case .coral:
-            return coral
-        case .neutral:
-            return mist
-        }
-    }
 }
 
 // MARK: - 动效常量
@@ -92,20 +206,22 @@ struct VisualEffectView: NSViewRepresentable {
 struct GlassPanel: View {
     var cornerRadius: CGFloat = 26
 
+    @Environment(\.watchPalette) private var palette
+
     var body: some View {
         ZStack {
             VisualEffectView(material: .hudWindow)
             LinearGradient(
                 colors: [
-                    WatchTheme.deep.opacity(0.86),
-                    WatchTheme.abyss.opacity(0.95)
+                    palette.deep.opacity(0.86),
+                    palette.abyss.opacity(0.95)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             RadialGradient(
                 colors: [
-                    WatchTheme.violet.opacity(0.14),
+                    palette.violet.opacity(0.14),
                     .clear
                 ],
                 center: .topTrailing,
@@ -114,7 +230,7 @@ struct GlassPanel: View {
             )
             RadialGradient(
                 colors: [
-                    WatchTheme.sea.opacity(0.09),
+                    palette.sea.opacity(0.09),
                     .clear
                 ],
                 center: .bottomLeading,
@@ -130,7 +246,7 @@ struct GlassPanel: View {
                         colors: [
                             Color.white.opacity(0.26),
                             Color.white.opacity(0.05),
-                            WatchTheme.sea.opacity(0.26)
+                            palette.sea.opacity(0.26)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -139,7 +255,7 @@ struct GlassPanel: View {
                 )
         }
         .shadow(color: Color.black.opacity(0.42), radius: 36, x: 0, y: 20)
-        .shadow(color: WatchTheme.violet.opacity(0.12), radius: 60, x: 0, y: 8)
+        .shadow(color: palette.violet.opacity(0.12), radius: 60, x: 0, y: 8)
     }
 }
 
@@ -147,9 +263,13 @@ struct GlassPanel: View {
 
 private struct CardBackground: ViewModifier {
     var cornerRadius: CGFloat = 17
-    var tint: Color = WatchTheme.deep
+    var tintOverride: Color?
     var fillOpacity: Double = 0.42
     var borderOpacity: Double = 0.09
+
+    @Environment(\.watchPalette) private var palette
+
+    private var tint: Color { tintOverride ?? palette.deep }
 
     func body(content: Content) -> some View {
         content
@@ -186,14 +306,14 @@ extension View {
     /// 统一的小组件卡片底色：轻微渐变、发丝描边和顶部高光。
     func watchCard(
         cornerRadius: CGFloat = 17,
-        tint: Color = WatchTheme.deep,
+        tint: Color? = nil,
         fillOpacity: Double = 0.42,
         borderOpacity: Double = 0.09
     ) -> some View {
         modifier(
             CardBackground(
                 cornerRadius: cornerRadius,
-                tint: tint,
+                tintOverride: tint,
                 fillOpacity: fillOpacity,
                 borderOpacity: borderOpacity
             )
@@ -218,11 +338,12 @@ private struct WatchButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let prominent: Bool
     @State private var hovering = false
+    @Environment(\.watchPalette) private var palette
 
     var body: some View {
         configuration.label
             .font(.custom(WatchTheme.bodyFont, size: 11).weight(.medium))
-            .foregroundStyle(prominent ? WatchTheme.abyss : WatchTheme.ice)
+            .foregroundStyle(prominent ? palette.abyss : palette.ice)
             .frame(minWidth: 28, minHeight: 28)
             .background {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -238,7 +359,7 @@ private struct WatchButtonBody: View {
                     )
             }
             .shadow(
-                color: prominent ? WatchTheme.seaBright.opacity(hovering ? 0.35 : 0.18) : .clear,
+                color: prominent ? palette.seaBright.opacity(hovering ? 0.35 : 0.18) : .clear,
                 radius: hovering ? 9 : 5,
                 y: 2
             )
@@ -251,7 +372,7 @@ private struct WatchButtonBody: View {
 
     private var fill: Color {
         if prominent {
-            return WatchTheme.seaBright.opacity(configuration.isPressed ? 0.75 : 1)
+            return palette.seaBright.opacity(configuration.isPressed ? 0.75 : 1)
         }
         return Color.white.opacity(
             configuration.isPressed ? 0.16 : hovering ? 0.13 : 0.07
@@ -303,12 +424,14 @@ struct IconButton: View {
 struct BrandMark: View {
     var size: CGFloat = 34
 
+    @Environment(\.watchPalette) private var palette
+
     var body: some View {
         ZStack {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [WatchTheme.deep, WatchTheme.abyss.opacity(0.85)],
+                        colors: [palette.deep, palette.abyss.opacity(0.85)],
                         center: .topLeading,
                         startRadius: 1,
                         endRadius: size
@@ -317,7 +440,7 @@ struct BrandMark: View {
             Circle()
                 .strokeBorder(
                     LinearGradient(
-                        colors: [WatchTheme.seaBright.opacity(0.85), WatchTheme.sea.opacity(0.35)],
+                        colors: [palette.seaBright.opacity(0.85), palette.sea.opacity(0.35)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -339,14 +462,14 @@ struct BrandMark: View {
             }
             .stroke(
                 LinearGradient(
-                    colors: [WatchTheme.seaBright, WatchTheme.amber],
+                    colors: [palette.seaBright, palette.amber],
                     startPoint: .leading,
                     endPoint: .trailing
                 ),
                 style: StrokeStyle(lineWidth: max(1.2, size * 0.052), lineCap: .round)
             )
             Circle()
-                .fill(WatchTheme.amber)
+                .fill(palette.amber)
                 .frame(width: size * 0.10, height: size * 0.10)
                 .offset(x: -size * 0.24, y: size * 0.22)
         }
@@ -382,11 +505,20 @@ extension View {
     }
 }
 
+private struct PanelLabel: ViewModifier {
+    @Environment(\.watchPalette) private var palette
+
+    func body(content: Content) -> some View {
+        content
+            .font(.custom(WatchTheme.bodyFont, size: 9).weight(.semibold))
+            .tracking(1.3)
+            .foregroundStyle(palette.mist)
+            .textCase(.uppercase)
+    }
+}
+
 extension View {
     func panelLabel() -> some View {
-        font(.custom(WatchTheme.bodyFont, size: 9).weight(.semibold))
-            .tracking(1.3)
-            .foregroundStyle(WatchTheme.mist)
-            .textCase(.uppercase)
+        modifier(PanelLabel())
     }
 }
