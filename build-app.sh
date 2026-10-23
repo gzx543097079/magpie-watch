@@ -17,6 +17,8 @@ rm -rf "$APP_PATH"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$ROOT/.build/release/MagpieWatch" "$MACOS/MagpieWatch"
 cp "$ROOT/Info.plist" "$CONTENTS/Info.plist"
+mkdir -p "$RESOURCES/Wallpaper"
+cp "$ROOT/design/starport.html" "$ROOT/design/three.min.js" "$RESOURCES/Wallpaper/"
 
 if [[ -f "$ICON_SOURCE" ]]; then
     cp "$ICON_SOURCE" "$RESOURCES/AppIcon.icns"

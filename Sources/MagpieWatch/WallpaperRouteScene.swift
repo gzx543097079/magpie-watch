@@ -505,6 +505,14 @@ struct WallpaperDestinationSlot: Identifiable, Equatable {
     let stage: WallpaperHopStage
 }
 
+enum WallpaperFlowOutcome: Equatable {
+    case ok
+    case rateLimited
+    case disconnected
+    case failed
+    case timedOut
+}
+
 struct WallpaperPacketFlow: Identifiable, Equatable {
     let id: String
     let agentID: String
@@ -512,6 +520,8 @@ struct WallpaperPacketFlow: Identifiable, Equatable {
     let stage: WallpaperHopStage
     let requestTokens: Int
     let responseTokens: Int
+    let outcome: WallpaperFlowOutcome
+    let statusCode: Int?
 }
 
 struct WallpaperFlowBoard: Equatable {
@@ -531,8 +541,8 @@ struct WallpaperFlowBoard: Equatable {
 }
 
 enum WallpaperBoardBuilder {
-    private static let agentLimit = 4
-    private static let destinationLimit = 4
+    private static let agentLimit = 8
+    private static let destinationLimit = 8
     private static let liveWindow: TimeInterval = 90
     private static let returnWindow: TimeInterval = 22
 
@@ -609,7 +619,9 @@ enum WallpaperBoardBuilder {
                     destinationID: destinationID,
                     stage: stage,
                     requestTokens: tokens.request,
-                    responseTokens: tokens.response
+                    responseTokens: tokens.response,
+                    outcome: outcome(route),
+                    statusCode: route.status ?? route.tries?.last?.status
                 )
             )
         }
@@ -755,6 +767,17 @@ enum WallpaperBoardBuilder {
         }
         if age < 1.4 { return .incoming }
         return .outbound
+    }
+
+    private static func outcome(_ route: TraceRoute) -> WallpaperFlowOutcome {
+        guard route.done == true else { return .ok }
+        let status = route.status ?? route.tries?.last?.status
+        if status == 429 { return .rateLimited }
+        if status == 408 || status == 504 { return .timedOut }
+        // 只有明确的零状态码才判断为连接中断；缺失状态码不能推断错误。
+        if status == 0 { return .disconnected }
+        if let status, status >= 400 { return .failed }
+        return .ok
     }
 
     private static func tokenCounts(_ route: TraceRoute) -> (request: Int, response: Int) {

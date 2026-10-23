@@ -42,6 +42,8 @@ struct PreferencesView: View {
 
                     section("动态壁纸") {
                         Toggle("显示动态壁纸（桌面图标下方）", isOn: $model.isWallpaperEnabled)
+                        Toggle("显示喜鹊鲸桌面小宠物", isOn: $model.isPetEnabled)
+                            .disabled(!model.isWallpaperEnabled)
                         Text("壁纸在所有显示器常驻显示实时路由与用量，鼠标事件会直接穿透，不影响正常使用。")
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
