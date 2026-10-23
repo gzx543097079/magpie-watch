@@ -95,11 +95,11 @@ NSApplication
 | `Sources/MagpieWatch/PanelControllers.swift` | `FloatingPanel`、小组件窗口、屏保全屏窗口与输入退出监听。 |
 | `Sources/MagpieWatch/WidgetView.swift` | 展开和紧凑两种小组件布局。 |
 | `Sources/MagpieWatch/ScreensaverView.swift` | 全屏屏保布局、头部、指标、底部状态和退出提示。 |
-| `Sources/MagpieWatch/TokenFlowView.swift` | Token 流向双通道动画：上行（缓存+输入）/下行（输出）。 |
+| `Sources/MagpieWatch/TokenFlowView.swift` | Token 流向光带：缓存 / 输入分行交织，输出反向回流；紧凑、面板、壁纸舞台、屏保舞台四种尺度，另有全屏淡色 `TokenRiverBackdrop`。 |
 | `Sources/MagpieWatch/WallpaperView.swift` | 桌面动态壁纸布局与 `AmbientOrbField` 环境光晕组件。 |
 | `Sources/MagpieWatch/RouteVisuals.swift` | 路由 Canvas、曲线、粒子、节点和 Reduce Motion 处理。 |
 | `Sources/MagpieWatch/PreferencesView.swift` | 偏好设置 UI。 |
-| `Sources/MagpieWatch/Theme.swift` | 颜色、字体、玻璃面板、品牌标记、通用按钮。 |
+| `Sources/MagpieWatch/Theme.swift` | 四套 `WatchPalette`、字体、玻璃面板、品牌标记、通用按钮。当前主题经 `\.watchPalette` 传给界面。 |
 | `Sources/MagpieWatch/Formatting.swift` | 数字缩写、货币、百分比、延迟、日期和账号遮蔽。 |
 | `Sources/MagpieWatch/UsageSparkline.swift` | 今日用量折线图和柱状信号图。 |
 | `Package.swift` | SwiftPM 可执行 target，最低 macOS 14。 |
@@ -231,6 +231,7 @@ GET /v1/magpie/trace?after=0  -> TraceResponse
 | `magpie.screensaver.idleMinutes` | Int | `5` |
 | `magpie.privacy.maskEmails` | Bool | `true` |
 | `magpie.wallpaper.enabled` | Bool | `false` |
+| `magpie.theme` | String | `aurora`（另有 `noir`、`ion`、`ember`） |
 
 新增设置时要同时处理默认值、`didSet` 持久化和 Preferences UI 绑定。修改键名会清空用户现有偏好，应提供迁移逻辑而不是直接改名。
 
@@ -292,6 +293,7 @@ pgrep -fl magpie
 - 自动屏保在设定时间出现，退出后不会立即重入。
 - Magpie 停止时显示离线，恢复后自动回到在线。
 - 邮箱遮蔽开关对路由和额度区域同时生效。
+- 切换四套视觉主题后，小组件、壁纸和屏保同时变色，重启后仍是上次的选择。
 
 ## 12. 当前限制与风险
 
@@ -364,6 +366,12 @@ open 'dist/Magpie Watch.app'
 ```
 
 ## 15. 变更记录
+
+### 2026-10-23
+
+- Token 流向改成电影感光带：缓存与输入分行交织，输出反向回流。厚度、彗星数量和流速绑定真实 token 体量与 tok/s；体量为 0 的车道不播放粒子。
+- 壁纸使用 `ambient` 舞台，屏保使用 `cinematic` 舞台，两者底层增加低透明度 `TokenRiverBackdrop`。沉浸式路由的入站链路在有上行 token 时追加缓存/输入粒子，管道粗细随体量略增；没有输出 token 时不再画回流粒子。
+- 新增四套可切换主题：极光暮色（`aurora`，原配色）、黑金夜宴（`noir`）、离子极昼（`ion`）、熔核（`ember`）。菜单栏「视觉主题」和偏好设置色板都会改 `magpie.theme`，小组件、壁纸、屏保一起生效。Reduce Motion 时粒子停止，配色和厚度仍保留。
 
 ### 2026-10-22（第四次）
 

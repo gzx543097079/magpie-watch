@@ -8,6 +8,9 @@ struct WidgetView: View {
 
     private var expandedSize: CGSize { CGSize(width: 430, height: 640) }
     private var compactSize: CGSize { CGSize(width: 294, height: 196) }
+    private var palette: WatchPalette { model.theme.palette }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -27,6 +30,8 @@ struct WidgetView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: model.widgetExpanded)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: model.theme)
+        .environment(\.watchPalette, palette)
     }
 
     private var expanded: some View {
@@ -68,14 +73,14 @@ struct WidgetView: View {
                     Text("MAGPIE 观测台")
                         .font(.custom(WatchTheme.displayCNFont, size: 14).weight(.semibold))
                         .tracking(0.4)
-                        .foregroundStyle(WatchTheme.ice)
+                        .foregroundStyle(palette.ice)
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(model.isOnline ? WatchTheme.seaBright : WatchTheme.coral)
+                            .fill(model.isOnline ? palette.seaBright : palette.coral)
                             .frame(width: 4, height: 4)
                         Text(model.isOnline ? "今日 \(Fmt.compact(model.todayCalls)) 次请求" : "网关离线")
                             .font(.custom(WatchTheme.monoFont, size: 7))
-                            .foregroundStyle(WatchTheme.mist)
+                            .foregroundStyle(palette.mist)
                     }
                 }
                 Spacer()
@@ -90,9 +95,9 @@ struct WidgetView: View {
             TokenFlowView(route: model.routePresentation, compact: true)
 
             HStack {
-                compactMetric("预估费用", Fmt.currency(model.usage?.cost), tint: WatchTheme.amber)
-                compactMetric("缓存命中", Fmt.percent(model.cacheHitRate), tint: WatchTheme.seaBright)
-                compactMetric("错误", "\(model.usage?.errors ?? 0)", tint: (model.usage?.errors ?? 0) > 0 ? WatchTheme.coral : WatchTheme.mist)
+                compactMetric("预估费用", Fmt.currency(model.usage?.cost), tint: palette.amber)
+                compactMetric("缓存命中", Fmt.percent(model.cacheHitRate), tint: palette.seaBright)
+                compactMetric("错误", "\(model.usage?.errors ?? 0)", tint: (model.usage?.errors ?? 0) > 0 ? palette.coral : palette.mist)
             }
         }
         .padding(15)
@@ -103,7 +108,7 @@ struct WidgetView: View {
             Text(label)
                 .font(.custom(WatchTheme.bodyFont, size: 6.5).weight(.semibold))
                 .tracking(0.8)
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
             Text(value)
                 .font(.custom(WatchTheme.monoFont, size: 10).weight(.medium))
                 .foregroundStyle(tint)
@@ -120,15 +125,15 @@ struct WidgetView: View {
                 Text("MAGPIE 观测台")
                     .font(.custom(WatchTheme.displayCNFont, size: 18).weight(.semibold))
                     .tracking(0.5)
-                    .foregroundStyle(WatchTheme.ice)
+                    .foregroundStyle(palette.ice)
                 HStack(spacing: 6) {
                     LiveDot(
                         isLive: model.isOnline,
-                        color: model.isOnline ? WatchTheme.seaBright : WatchTheme.coral
+                        color: model.isOnline ? palette.seaBright : palette.coral
                     )
                     Text(model.isOnline ? "实时 · 127.0.0.1:3425" : "网关离线")
                         .font(.custom(WatchTheme.monoFont, size: 7.5))
-                        .foregroundStyle(model.isOnline ? WatchTheme.mist : WatchTheme.coral)
+                        .foregroundStyle(model.isOnline ? palette.mist : palette.coral)
                 }
             }
 
@@ -156,17 +161,17 @@ struct WidgetView: View {
                         Text("\(model.todayCalls)")
                             .font(.custom(WatchTheme.displayFont, size: 52).weight(.medium))
                             .tracking(1)
-                            .foregroundStyle(WatchTheme.ice)
+                            .foregroundStyle(palette.ice)
                             .contentTransition(.numericText())
                             .animation(WatchMotion.data, value: model.todayCalls)
                         Text("次请求")
                             .font(.custom(WatchTheme.displayCNFont, size: 9).weight(.medium))
                             .tracking(0.4)
-                            .foregroundStyle(WatchTheme.mist)
+                            .foregroundStyle(palette.mist)
                     }
                     Text(model.isOnline ? "\(model.usage?.errors ?? 0) 次错误 · \(model.usage?.retried ?? 0) 次重试" : "Magpie 未连接")
                         .font(.custom(WatchTheme.displayCNFont, size: 10))
-                        .foregroundStyle(WatchTheme.mist)
+                        .foregroundStyle(palette.mist)
                 }
 
                 Spacer()
@@ -176,12 +181,12 @@ struct WidgetView: View {
                         .panelLabel()
                     Text(Fmt.currency(model.usage?.cost))
                         .font(.custom(WatchTheme.monoFont, size: 19).weight(.medium))
-                        .foregroundStyle(WatchTheme.amber)
+                        .foregroundStyle(palette.amber)
                         .contentTransition(.numericText())
                         .animation(WatchMotion.data, value: model.usage?.cost)
                     Text("\(Fmt.compact(model.usage?.credits ?? 0)) 额度点")
                         .font(.custom(WatchTheme.displayCNFont, size: 8.5))
-                        .foregroundStyle(WatchTheme.mist)
+                        .foregroundStyle(palette.mist)
                 }
             }
 
@@ -200,7 +205,7 @@ struct WidgetView: View {
                     Text("现在")
                 }
                 .font(.custom(WatchTheme.monoFont, size: 6.5))
-                .foregroundStyle(WatchTheme.mist.opacity(0.75))
+                .foregroundStyle(palette.mist.opacity(0.75))
             }
 
             HStack(spacing: 0) {
@@ -219,15 +224,15 @@ struct WidgetView: View {
             Text(label)
                 .font(.custom(WatchTheme.bodyFont, size: 7).weight(.semibold))
                 .tracking(0.8)
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
             Text(value)
                 .font(.custom(WatchTheme.monoFont, size: 11).weight(.medium))
-                .foregroundStyle(WatchTheme.ice)
+                .foregroundStyle(palette.ice)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(suffix)
                 .font(.custom(WatchTheme.bodyFont, size: 7))
-                .foregroundStyle(WatchTheme.mist.opacity(0.65))
+                .foregroundStyle(palette.mist.opacity(0.65))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -237,7 +242,7 @@ struct WidgetView: View {
             sectionHeading(
                 title: "实时路由",
                 detail: model.routePresentation.isLive ? "传输中" : "待机",
-                tint: model.routePresentation.isLive ? WatchTheme.seaBright : WatchTheme.mist
+                tint: model.routePresentation.isLive ? palette.seaBright : palette.mist
             )
             .padding(.horizontal, 15)
             .padding(.top, 14)
@@ -253,12 +258,12 @@ struct WidgetView: View {
             HStack(spacing: 0) {
                 routeStat("请求", "\(model.routePresentation.requests)")
                 routeStat("重路由", "\(model.routePresentation.rerouted)")
-                routeStat("错误", "\(model.routePresentation.errors)", tint: model.routePresentation.errors > 0 ? WatchTheme.coral : WatchTheme.ice)
+                routeStat("错误", "\(model.routePresentation.errors)", tint: model.routePresentation.errors > 0 ? palette.coral : palette.ice)
                 routeStat("延迟", model.routePresentation.latency)
             }
             .padding(.horizontal, 15)
             .padding(.vertical, 11)
-            .background(WatchTheme.abyss.opacity(0.28))
+            .background(palette.abyss.opacity(0.28))
         }
         .watchCard(fillOpacity: 0.38)
         .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
@@ -269,7 +274,7 @@ struct WidgetView: View {
             sectionHeading(
                 title: "额度压力",
                 detail: model.selectedAccountLine,
-                tint: WatchTheme.mist
+                tint: palette.mist
             )
 
             if model.quotaHighlights.isEmpty {
@@ -278,7 +283,7 @@ struct WidgetView: View {
                     Text("正在读取账号额度")
                 }
                 .font(.custom(WatchTheme.bodyFont, size: 11))
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 10)
             } else {
@@ -292,7 +297,7 @@ struct WidgetView: View {
     }
 
     private func quotaRow(_ quota: QuotaHighlight) -> some View {
-        let tint = WatchTheme.tone(quota.tone)
+        let tint = palette.tone(quota.tone)
         return VStack(spacing: 7) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1)
@@ -303,11 +308,11 @@ struct WidgetView: View {
                         Text(quota.provider.uppercased())
                             .font(.custom(WatchTheme.bodyFont, size: 9).weight(.bold))
                             .tracking(0.7)
-                            .foregroundStyle(WatchTheme.ice)
+                            .foregroundStyle(palette.ice)
                         if quota.isSelected {
                             Text("当前")
                                 .font(.custom(WatchTheme.displayCNFont, size: 7).weight(.medium))
-                                .foregroundStyle(WatchTheme.abyss)
+                                .foregroundStyle(palette.abyss)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
                                 .background(tint, in: Capsule())
@@ -315,13 +320,13 @@ struct WidgetView: View {
                     }
                     Text("\(quota.windowName) · \(quota.account)")
                         .font(.custom(WatchTheme.monoFont, size: 7.5))
-                        .foregroundStyle(WatchTheme.mist)
+                        .foregroundStyle(palette.mist)
                         .lineLimit(1)
                 }
                 Spacer()
                 Text(Fmt.percent(quota.usedPercent))
                     .font(.custom(WatchTheme.monoFont, size: 12).weight(.medium))
-                    .foregroundStyle(quota.usedPercent >= 90 ? WatchTheme.coral : tint)
+                    .foregroundStyle(quota.usedPercent >= 90 ? palette.coral : tint)
             }
 
             GeometryReader { proxy in
@@ -331,7 +336,7 @@ struct WidgetView: View {
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [tint.opacity(0.72), quota.usedPercent >= 90 ? WatchTheme.coral : tint],
+                                colors: [tint.opacity(0.72), quota.usedPercent >= 90 ? palette.coral : tint],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -355,7 +360,7 @@ struct WidgetView: View {
                 Text(quota.resetText)
             }
             .font(.custom(WatchTheme.bodyFont, size: 7.5))
-            .foregroundStyle(WatchTheme.mist.opacity(0.8))
+            .foregroundStyle(palette.mist.opacity(0.8))
         }
     }
 
@@ -364,52 +369,52 @@ struct WidgetView: View {
             sectionHeading(
                 title: "最近活动",
                 detail: "\(model.usage?.agents?.count ?? 0) 个智能体",
-                tint: WatchTheme.mist
+                tint: palette.mist
             )
 
             ForEach(Array((model.usage?.models ?? []).prefix(3).enumerated()), id: \.element.id) { _, item in
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(WatchTheme.sea.opacity(0.72))
+                        .fill(palette.sea.opacity(0.72))
                         .frame(width: 4, height: 4)
                     Text(item.name ?? item.model ?? "模型")
                         .font(.custom(WatchTheme.bodyFont, size: 9.5).weight(.medium))
-                        .foregroundStyle(WatchTheme.ice)
+                        .foregroundStyle(palette.ice)
                         .lineLimit(1)
                     Text("· \(Fmt.providerName(item.provider))")
                         .font(.custom(WatchTheme.bodyFont, size: 8))
-                        .foregroundStyle(WatchTheme.mist)
+                        .foregroundStyle(palette.mist)
                         .lineLimit(1)
                     Spacer()
                     Text("\(item.calls ?? 0)")
                         .font(.custom(WatchTheme.monoFont, size: 8.5))
-                        .foregroundStyle(WatchTheme.mist)
+                        .foregroundStyle(palette.mist)
                     Text(Fmt.currency(item.cost))
                         .font(.custom(WatchTheme.monoFont, size: 8.5))
-                        .foregroundStyle(WatchTheme.amber.opacity(0.88))
+                        .foregroundStyle(palette.amber.opacity(0.88))
                 }
             }
 
             if model.usage?.models?.isEmpty != false {
                 Text(model.isOnline ? "暂无请求记录" : "连接 Magpie 后显示最近活动")
                     .font(.custom(WatchTheme.bodyFont, size: 10))
-                    .foregroundStyle(WatchTheme.mist)
+                    .foregroundStyle(palette.mist)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(15)
-        .watchCard(tint: WatchTheme.deep, fillOpacity: 0.32, borderOpacity: 0.065)
+        .watchCard(fillOpacity: 0.32, borderOpacity: 0.065)
     }
 
     private var footer: some View {
         HStack(spacing: 8) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(model.isOnline ? WatchTheme.seaBright : WatchTheme.coral)
+                    .fill(model.isOnline ? palette.seaBright : palette.coral)
                     .frame(width: 4, height: 4)
                 Text(model.isOnline ? Fmt.relative(model.lastUpdated) : "Magpie 离线")
                     .font(.custom(WatchTheme.bodyFont, size: 8))
-                    .foregroundStyle(WatchTheme.mist)
+                    .foregroundStyle(palette.mist)
             }
             Spacer()
             Button {
@@ -441,7 +446,7 @@ struct WidgetView: View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
                 .panelLabel()
-                .foregroundStyle(WatchTheme.ice.opacity(0.80))
+                .foregroundStyle(palette.ice.opacity(0.80))
             Spacer()
             Text(detail)
                 .font(.custom(WatchTheme.monoFont, size: 7))
@@ -452,15 +457,16 @@ struct WidgetView: View {
         }
     }
 
-    private func routeStat(_ label: String, _ value: String, tint: Color = WatchTheme.ice) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func routeStat(_ label: String, _ value: String, tint: Color? = nil) -> some View {
+        let color = tint ?? palette.ice
+        return VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.custom(WatchTheme.bodyFont, size: 6.5).weight(.semibold))
                 .tracking(0.7)
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
             Text(value)
                 .font(.custom(WatchTheme.monoFont, size: 9.5).weight(.medium))
-                .foregroundStyle(tint)
+                .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .contentTransition(.numericText())

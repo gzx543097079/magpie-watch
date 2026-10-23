@@ -5,27 +5,32 @@ struct ScreensaverView: View {
     var onDismiss: () -> Void
 
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var palette: WatchPalette { model.theme.palette }
 
     var body: some View {
-        ZStack {
+        GeometryReader { proxy in
+            ZStack {
             background
+            TokenRiverBackdrop(route: model.routePresentation, strength: 0.82)
             ambientOrbs
             ambientGrid
 
             VStack(spacing: 0) {
                 screensaverHeader
                     .padding(.horizontal, 58)
-                    .padding(.top, 44)
+                    .padding(.top, 36)
 
                 hero
                     .padding(.horizontal, 58)
-                    .padding(.top, 16)
+                    .padding(.top, 12)
 
-                TokenFlowView(route: model.routePresentation)
-                    .frame(maxWidth: 1_160)
-                    .frame(height: 62)
-                    .padding(.horizontal, 58)
-                    .padding(.top, 8)
+                TokenFlowView(route: model.routePresentation, style: .cinematic)
+                    .frame(maxWidth: 1_360)
+                    .frame(height: tokenStageHeight(proxy.size.height))
+                    .padding(.horizontal, 48)
+                    .padding(.top, 6)
 
                 RouteNetworkView(route: model.routePresentation, immersive: true)
                     .frame(maxWidth: 1_440)
@@ -42,10 +47,13 @@ struct ScreensaverView: View {
             .scaleEffect(appeared ? 1 : 0.985)
 
             dismissHint
+            }
         }
         .ignoresSafeArea()
+        .environment(\.watchPalette, palette)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: model.theme)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.7)) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.7)) {
                 appeared = true
             }
         }
@@ -54,13 +62,17 @@ struct ScreensaverView: View {
         .accessibilityAddTraits(.isModal)
     }
 
+    private func tokenStageHeight(_ total: CGFloat) -> CGFloat {
+        min(164, max(116, total * 0.17))
+    }
+
     private var background: some View {
         ZStack {
-            WatchTheme.abyss
+            palette.abyss
             RadialGradient(
                 colors: [
-                    WatchTheme.deep.opacity(0.92),
-                    WatchTheme.abyss.opacity(0.98)
+                    palette.deep.opacity(0.92),
+                    palette.abyss.opacity(0.98)
                 ],
                 center: UnitPoint(x: 0.54, y: 0.38),
                 startRadius: 10,
@@ -68,7 +80,7 @@ struct ScreensaverView: View {
             )
             RadialGradient(
                 colors: [
-                    WatchTheme.sea.opacity(0.085),
+                    palette.sea.opacity(0.085),
                     .clear
                 ],
                 center: UnitPoint(x: 0.72, y: 0.26),
@@ -88,12 +100,12 @@ struct ScreensaverView: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
-            TimelineView(.animation(minimumInterval: 1 / 24)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
+            TimelineView(.animation(minimumInterval: 1 / 24, paused: reduceMotion)) { context in
+                let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
                 let orbs: [(Color, Double, CGPoint, Double)] = [
-                    (WatchTheme.sea, 0.055, drift(t: t, period: 47, width: width, height: height, phase: 0), width * 0.30),
-                    (WatchTheme.blue, 0.045, drift(t: t, period: 61, width: width, height: height, phase: 2.1), width * 0.26),
-                    (WatchTheme.violet, 0.040, drift(t: t, period: 73, width: width, height: height, phase: 4.4), width * 0.22)
+                    (palette.sea, 0.055, drift(t: t, period: 47, width: width, height: height, phase: 0), width * 0.30),
+                    (palette.blue, 0.045, drift(t: t, period: 61, width: width, height: height, phase: 2.1), width * 0.26),
+                    (palette.violet, 0.040, drift(t: t, period: 73, width: width, height: height, phase: 4.4), width * 0.22)
                 ]
                 ZStack {
                     ForEach(Array(orbs.enumerated()), id: \.offset) { _, orb in
@@ -169,11 +181,11 @@ struct ScreensaverView: View {
                 Text("MAGPIE 观测台")
                     .font(.custom(WatchTheme.displayCNFont, size: 23).weight(.semibold))
                     .tracking(0.8)
-                    .foregroundStyle(WatchTheme.ice)
+                    .foregroundStyle(palette.ice)
                 Text("本地路由观测站")
                     .font(.custom(WatchTheme.displayCNFont, size: 9).weight(.medium))
                     .tracking(2)
-                    .foregroundStyle(WatchTheme.mist)
+                    .foregroundStyle(palette.mist)
             }
 
             Spacer()
@@ -181,11 +193,11 @@ struct ScreensaverView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(Fmt.clock())
                     .font(.custom(WatchTheme.monoFont, size: 18).weight(.medium))
-                    .foregroundStyle(WatchTheme.ice)
+                    .foregroundStyle(palette.ice)
                 Text("\(Fmt.shortDate()) · \(model.isOnline ? "网关在线" : "网关离线")")
                     .font(.custom(WatchTheme.displayCNFont, size: 9).weight(.medium))
                     .tracking(0.8)
-                    .foregroundStyle(model.isOnline ? WatchTheme.seaBright : WatchTheme.coral)
+                    .foregroundStyle(model.isOnline ? palette.seaBright : palette.coral)
             }
         }
     }
@@ -196,28 +208,28 @@ struct ScreensaverView: View {
                 HStack(spacing: 8) {
                     LiveDot(
                         isLive: model.routePresentation.isLive,
-                        color: model.routePresentation.isLive ? WatchTheme.seaBright : WatchTheme.amber
+                        color: model.routePresentation.isLive ? palette.seaBright : palette.amber
                     )
                     Text(model.routePresentation.isLive ? "路由传输中" : "正在观测网关")
                         .font(.custom(WatchTheme.displayCNFont, size: 10).weight(.medium))
                         .tracking(1.2)
-                        .foregroundStyle(WatchTheme.seaBright.opacity(0.9))
+                        .foregroundStyle(palette.seaBright.opacity(0.9))
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: 18) {
                     Text("\(model.todayCalls)")
                         .font(.custom(WatchTheme.displayFont, size: 94).weight(.medium))
                         .tracking(2)
-                        .foregroundStyle(WatchTheme.ice)
+                        .foregroundStyle(palette.ice)
                         .contentTransition(.numericText())
                     VStack(alignment: .leading, spacing: 3) {
                         Text("今日请求")
                             .font(.custom(WatchTheme.displayCNFont, size: 11).weight(.medium))
                             .tracking(0.8)
-                            .foregroundStyle(WatchTheme.mist)
+                            .foregroundStyle(palette.mist)
                         Text("全部经由一个本地网关")
                             .font(.custom(WatchTheme.displayCNFont, size: 13))
-                            .foregroundStyle(WatchTheme.ice.opacity(0.60))
+                            .foregroundStyle(palette.ice.opacity(0.60))
                     }
                 }
             }
@@ -225,10 +237,10 @@ struct ScreensaverView: View {
             Spacer()
 
             HStack(spacing: 28) {
-                heroMetric("预估费用", Fmt.currency(model.usage?.cost), tint: WatchTheme.amber)
-                heroMetric("缓存命中", Fmt.percent(model.cacheHitRate), tint: WatchTheme.seaBright)
-                heroMetric("输出令牌", Fmt.compact(model.usage?.output), tint: WatchTheme.ice)
-                heroMetric("错误", "\(model.usage?.errors ?? 0)", tint: (model.usage?.errors ?? 0) > 0 ? WatchTheme.coral : WatchTheme.ice)
+                heroMetric("预估费用", Fmt.currency(model.usage?.cost), tint: palette.amber)
+                heroMetric("缓存命中", Fmt.percent(model.cacheHitRate), tint: palette.seaBright)
+                heroMetric("输出令牌", Fmt.compact(model.usage?.output), tint: palette.ice)
+                heroMetric("错误", "\(model.usage?.errors ?? 0)", tint: (model.usage?.errors ?? 0) > 0 ? palette.coral : palette.ice)
             }
         }
         .padding(.bottom, 13)
@@ -236,7 +248,7 @@ struct ScreensaverView: View {
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: [WatchTheme.sea.opacity(0.34), Color.white.opacity(0.06), .clear],
+                        colors: [palette.sea.opacity(0.34), Color.white.opacity(0.06), .clear],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -250,7 +262,7 @@ struct ScreensaverView: View {
             Text(label)
                 .font(.custom(WatchTheme.bodyFont, size: 8).weight(.semibold))
                 .tracking(1.3)
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
             Text(value)
                 .font(.custom(WatchTheme.monoFont, size: 18).weight(.medium))
                 .foregroundStyle(tint)
@@ -272,7 +284,7 @@ struct ScreensaverView: View {
             Spacer()
             Text("127.0.0.1:3425")
                 .font(.custom(WatchTheme.monoFont, size: 8))
-                .foregroundStyle(WatchTheme.mist.opacity(0.72))
+                .foregroundStyle(palette.mist.opacity(0.72))
         }
         .padding(.top, 16)
         .overlay(alignment: .top) {
@@ -287,10 +299,10 @@ struct ScreensaverView: View {
             Text(label)
                 .font(.custom(WatchTheme.bodyFont, size: 7).weight(.semibold))
                 .tracking(1)
-                .foregroundStyle(WatchTheme.mist)
+                .foregroundStyle(palette.mist)
             Text(value)
                 .font(.custom(WatchTheme.monoFont, size: 10))
-                .foregroundStyle(WatchTheme.ice.opacity(0.88))
+                .foregroundStyle(palette.ice.opacity(0.88))
                 .lineLimit(1)
         }
         .frame(minWidth: 100, alignment: .leading)
@@ -314,7 +326,7 @@ struct ScreensaverView: View {
                         Text("移动鼠标或按任意键退出")
                     }
                     .font(.custom(WatchTheme.bodyFont, size: 9))
-                    .foregroundStyle(WatchTheme.mist.opacity(0.72))
+                    .foregroundStyle(palette.mist.opacity(0.72))
                     .padding(.horizontal, 13)
                     .padding(.vertical, 8)
                     .background(Color.black.opacity(0.22), in: Capsule())

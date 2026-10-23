@@ -130,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 key: ""
             )
         )
+        statusMenu.addItem(themeMenuItem())
         statusMenu.addItem(
             menuItem(
                 title: "偏好设置…",
@@ -152,6 +153,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 key: "q"
             )
         )
+    }
+
+    private func themeMenuItem() -> NSMenuItem {
+        let menu = NSMenu()
+        for theme in WatchThemeID.allCases {
+            let item = NSMenuItem(title: theme.title, action: #selector(selectTheme(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = theme == model.theme ? .on : .off
+            item.representedObject = theme.rawValue
+            menu.addItem(item)
+        }
+        let parent = NSMenuItem(title: "视觉主题 · \(model.theme.title)", action: nil, keyEquivalent: "")
+        parent.submenu = menu
+        return parent
     }
 
     private func menuItem(title: String, action: Selector, key: String) -> NSMenuItem {
@@ -184,6 +199,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if !active {
                     self?.startIdleMonitoring()
                 }
+            }
+            .store(in: &cancellables)
+
+        model.$theme
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.rebuildStatusMenu()
             }
             .store(in: &cancellables)
 
@@ -294,6 +316,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshData() {
         Task { await model.refresh() }
+    }
+
+    @objc private func selectTheme(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let theme = WatchThemeID(rawValue: raw) else { return }
+        model.theme = theme
     }
 
     @objc private func resetWidgetPosition() {

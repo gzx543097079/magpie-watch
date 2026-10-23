@@ -44,6 +44,10 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(isWallpaperEnabled, forKey: Keys.wallpaperEnabled) }
     }
 
+    @Published var theme: WatchThemeID {
+        didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
+    }
+
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -66,6 +70,7 @@ final class AppModel: ObservableObject {
         let savedIdleMinutes = defaults.object(forKey: Keys.idleMinutes) as? Int
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
         let savedWallpaper = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool
+        let savedTheme = defaults.string(forKey: Keys.theme)
 
         widgetExpanded = savedExpanded ?? true
         isWidgetVisible = savedVisible ?? false
@@ -75,6 +80,7 @@ final class AppModel: ObservableObject {
         idleMinutes = savedIdleMinutes ?? 5
         maskEmails = savedMaskEmails ?? true
         isWallpaperEnabled = savedWallpaper ?? false
+        theme = WatchThemeID(rawValue: savedTheme ?? "") ?? .aurora
     }
 
     deinit {
@@ -382,4 +388,5 @@ private enum Keys {
     static let idleMinutes = "magpie.screensaver.idleMinutes"
     static let maskEmails = "magpie.privacy.maskEmails"
     static let wallpaperEnabled = "magpie.wallpaper.enabled"
+    static let theme = "magpie.theme"
 }
