@@ -448,30 +448,6 @@
     return [a * p[0] + b * p[2] + c * p[4] + d * p[6], a * p[1] + b * p[3] + c * p[5] + d * p[7]];
   }
 
-  function drawRouteChip(ctx, x, y, w, h, title, sub, accent, glow, alpha) {
-    ctx.save();
-    ctx.globalAlpha = alpha == null ? 1 : alpha;
-    ctx.shadowColor = glow ? accent : 'transparent';
-    ctx.shadowBlur = glow ? 12 : 0;
-    ctx.fillStyle = ROUTE_C.chip;
-    ctx.strokeStyle = glow ? accent : ROUTE_C.edge;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 3);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = glow ? '#ffffff' : '#f2f9ff';
-    ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(title, x + w / 2, y + h / 2 - 1, w - 10);
-    ctx.fillStyle = glow ? accent : '#7e95ad';
-    ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.fillText(sub, x + w / 2, y + h / 2 + 11, w - 10);
-    ctx.restore();
-  }
-
   /* 事件火花：状态无关的瞬态粒子（位置由 时间×速度 推出，无需逐帧积分）。 */
   const routeSparks = [];
   function spawnSparks(x, y, color, n, speed) {
@@ -810,33 +786,47 @@
     routeLayoutBusy = false;
     const reduce = routeReduceQuery.matches;
 
-    const agentW = Math.min(148, W * 0.16), modelW = Math.min(158, W * 0.17), gwW = 108, chipH = 34;
-    const agentX = 4, modelX = W - modelW - 4, gwX = (W - gwW) / 2;
+    // 星系几何：中央恒星 + 两侧椭圆轨道上的行星（智能体在左、模型在右）。
+    const cx = W / 2, cy = H / 2, starR = 30;
+    const laneH = 46;
     const alphaOf = (node) => {
       if (reduce) return node.state === 'out' ? 0 : 1;
       if (node.state === 'in') return Math.min(1, (now - node.since) / 500);
       if (node.state === 'out') return Math.max(0, 1 - (now - node.since) / 600);
       return 1;
     };
-    // 布局：在册节点缓动到目标位（稳定序，避免每次轮询跳位）；退场节点原地淡出。
-    const layout = (reg) => {
+    // 布局：在册节点缓动到目标轨道位（稳定序）；再按椭圆参数算出本帧行星坐标（含缓慢轨道漂移）。
+    // sideSign：-1 左侧（智能体），+1 右侧（模型）。node.px/py = 行星当前位置，rx/ry = 轨道半径。
+    const layout = (reg, sideSign) => {
       if (!reduce) reg.forEach((n) => { if (n.state === 'in' && now - n.since > 500) n.state = 'live'; });
       const live = [...reg.entries()].filter(([, n]) => n.state !== 'out');
-      const pos = new Map();
       live.forEach(([name, node], i) => {
-        const target = ((i + 1) / (live.length + 1)) * (H - chipH - 8) + 4 + chipH / 2;
+        const target = ((i + 1) / (live.length + 1)) * (H - laneH - 12) + 6 + laneH / 2;
         if (node.y == null || reduce) node.y = target;
         else {
           node.y += (target - node.y) * 0.22;
           if (Math.abs(target - node.y) > 0.75) routeLayoutBusy = true;
         }
-        pos.set(name, node.y);
+        const rx = Math.min(W * 0.36, 360);
+        const ry = Math.max(44, Math.abs(node.y - cy));
+        // 轨道角：左侧 θ≈π，右侧 θ≈0；叠加缓慢漂移，行星在轨道上轻轻游动。
+        const phi = Math.asin(Math.max(-1, Math.min(1, (node.y - cy) / ry)));
+        const theta0 = sideSign < 0 ? Math.PI - phi : phi;
+        const drift = reduce ? 0 : Math.sin(now / 4200 + i * 2.1) * 0.055;
+        const theta = theta0 + drift;
+        node.rx = rx; node.ry = ry;
+        node.px = cx + rx * Math.cos(theta);
+        node.py = cy + ry * Math.sin(theta);
       });
-      reg.forEach((node, name) => { if (node.state === 'out' && node.y != null) pos.set(name, node.y); });
-      return pos;
+      reg.forEach((node) => {
+        if (node.state === 'out' && node.y != null && node.px == null) {
+          node.px = cx + Math.min(W * 0.36, 360) * sideSign;
+          node.py = node.y;
+        }
+      });
     };
-    const agentPos = layout(routeNodes.agents);
-    const modelPos = layout(routeNodes.models);
+    layout(routeNodes.agents, -1);
+    layout(routeNodes.models, 1);
 
     // 网关底光 + 3D 核心：核心常驻——待机慢转呼吸，运转随吞吐（在途+过境数）加速变亮。
     routeCoreAlpha += (1 - routeCoreAlpha) * (reduce ? 1 : 0.06);
@@ -863,67 +853,63 @@
       if (trip.phase === 'done' && now - trip.startedAt <= 600) activeAgents.add(trip.agent);
     });
 
-    // 链路：流动虚线（智能体侧流向网关、模型侧流出）+ 活跃链路辉光垫层。
+    // 轨道弧线：每颗行星一条淡淡的椭圆轨道（含行星的漂移余量）。
     ctx.save();
-    ctx.setLineDash([2, 5]);
-    ctx.lineDashOffset = -(now / 38) % 7;
+    ctx.setLineDash([1, 6]);
     routeNodes.agents.forEach((node, name) => {
-      const y = agentPos.get(name);
       const alpha = alphaOf(node);
-      if (y == null || alpha <= 0.02) return;
-      const p = legPoints(agentX + agentW, y, gwX, H / 2);
-      if (activeAgents.has(name)) {
-        ctx.save();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = alpha * 0.16;
-        ctx.strokeStyle = ROUTE_C.request;
-        ctx.lineWidth = 4.5;
-        ctx.beginPath();
-        ctx.moveTo(p[0], p[1]);
-        ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
-        ctx.stroke();
-        ctx.restore();
-      }
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = activeAgents.has(name) ? 'rgba(111, 242, 255, 0.55)' : ROUTE_C.link;
+      if (node.rx == null || alpha <= 0.02) return;
+      ctx.globalAlpha = alpha * (activeAgents.has(name) ? 0.22 : 0.10);
+      ctx.strokeStyle = ROUTE_C.request;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(p[0], p[1]);
-      ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+      ctx.ellipse(cx, cy, node.rx, node.ry, 0, 0, Math.PI * 2);
       ctx.stroke();
     });
     routeNodes.models.forEach((node, name) => {
-      const y = modelPos.get(name);
       const alpha = alphaOf(node);
-      if (y == null || alpha <= 0.02) return;
-      const p = legPoints(gwX + gwW, H / 2, modelX, y);
-      if (activeModels.has(name)) {
-        ctx.save();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = alpha * 0.16;
-        ctx.strokeStyle = ROUTE_C.response;
-        ctx.lineWidth = 4.5;
-        ctx.beginPath();
-        ctx.moveTo(p[0], p[1]);
-        ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
-        ctx.stroke();
-        ctx.restore();
-      }
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = activeModels.has(name) ? 'rgba(159, 209, 255, 0.55)' : ROUTE_C.link;
+      if (node.rx == null || alpha <= 0.02) return;
+      ctx.globalAlpha = alpha * (activeModels.has(name) ? 0.22 : 0.10);
+      ctx.strokeStyle = ROUTE_C.response;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, node.rx, node.ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    // 引力束：活跃行星与恒星之间一道流动的光束（宽辉光垫底 + 流动虚线）。
+    ctx.setLineDash([2, 5]);
+    ctx.lineDashOffset = -(now / 38) % 7;
+    const beam = (node, name, active, accent) => {
+      if (!active || node.px == null) return;
+      const alpha = alphaOf(node);
+      const p = legPoints(node.px, node.py, cx, cy);
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = alpha * 0.16;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(p[0], p[1]);
+      ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+      ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.strokeStyle = accent;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(p[0], p[1]);
       ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
       ctx.stroke();
-    });
+    };
+    routeNodes.agents.forEach((node, name) => beam(node, name, activeAgents.has(name), 'rgba(111, 242, 255, 0.9)'));
+    routeNodes.models.forEach((node, name) => beam(node, name, activeModels.has(name), 'rgba(159, 209, 255, 0.9)'));
     ctx.restore();
 
     // 待机声呐：都未触发（无行程无在途、芯片也全部退场）时，网关一圈圈向外呼吸。
     if (stageIdle && !routeNodes.agents.size && !routeNodes.models.size && routeCoreAlpha > 0.02 && !reduce) {
       for (let i = 0; i < 2; i += 1) {
         const p = ((now / 2600) + i * 0.5) % 1;
-        const r = gwW / 2 + 6 + p * Math.min(H, W) * 0.32;
+        const r = starR + 8 + p * Math.min(H, W) * 0.34;
         ctx.save();
         ctx.globalAlpha = routeCoreAlpha * (1 - p) * 0.34;
         ctx.strokeStyle = ROUTE_C.request;
@@ -935,16 +921,16 @@
       }
     }
 
-    // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。端点坐标取节点当前位置，重排时彗星跟着走。
+    // 包裹：沿引力束移动的彗星；在途的停在行星旁脉冲。端点坐标取行星当前位置，漂移时彗星跟着走。
     let parkedCount = 0;
     let transit = 0;
     routeTrips.forEach((trip) => {
       const an = routeNodes.agents.get(trip.agent);
       const mn = routeNodes.models.get(trip.model);
-      if (!an || !mn || an.y == null || mn.y == null) return;
-      const ay = an.y, my = mn.y;
-      const leg1 = legPoints(agentX + agentW, ay, gwX, H / 2);
-      const leg2 = legPoints(gwX + gwW, H / 2, modelX, my);
+      if (!an || !mn || an.px == null || mn.px == null) return;
+      // 引力束：行星边缘 → 恒星中心 → 对侧行星边缘。
+      const leg1 = legPoints(an.px + 9, an.py, cx, cy);
+      const leg2 = legPoints(cx, cy, mn.px - 9, mn.py);
       const elapsed = now - trip.startedAt;
       const speed = trip.fast ? ROUTE_T.fastK : 1;
       if (trip.phase === 'req1') {
@@ -954,9 +940,9 @@
         drawRouteComet(ctx, leg1, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
         if (t >= 1) {
           trip.phase = 'req2'; trip.startedAt = now;
-          routeRipples.push({ x: gwX, y: H / 2, at: now, color: trip.color });
-          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
-          spawnSparks(gwX, H / 2, trip.color, 4, 0.05);        // 进网关：迸几颗火花
+          routeRipples.push({ x: cx, y: cy, at: now, color: trip.color });
+          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 恒星弹一下
+          spawnSparks(cx, cy, trip.color, 4, 0.05);            // 坠入恒星：迸几颗火花
         }
       } else if (trip.phase === 'req2') {
         const t = Math.min(1, elapsed / (ROUTE_T.req2 * speed));
@@ -967,7 +953,7 @@
           trip.phase = trip.park ? 'parked' : 'res1'; trip.startedAt = now;
           const [mx, my2] = cubicAt(leg2, 1);
           routeRipples.push({ x: mx, y: my2, at: now, color: trip.color });
-          spawnSparks(mx, my2, trip.color, 10, 0.09);          // 命中模型：冲击波 + 火花迸射
+          spawnSparks(mx, my2, trip.color, 10, 0.09);          // 命中模型行星：冲击波 + 火花迸射
         }
       } else if (trip.phase === 'parked') {
         parkedCount += 1;
@@ -1007,9 +993,9 @@
         drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
         if (t >= 1) {
           trip.phase = 'res2'; trip.startedAt = now;
-          routeRipples.push({ x: gwX + gwW, y: H / 2, at: now, color: trip.color });
-          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
-          spawnSparks(gwX + gwW, H / 2, trip.color, 4, 0.05);  // 出网关：迸几颗火花
+          routeRipples.push({ x: cx, y: cy, at: now, color: trip.color });
+          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 恒星弹一下
+          spawnSparks(cx, cy, trip.color, 4, 0.05);            // 离开恒星：迸几颗火花
         }
       } else if (trip.phase === 'res2') {
         const t = Math.min(1, elapsed / (ROUTE_T.res2 * speed));
@@ -1019,10 +1005,10 @@
         activeAgents.add(trip.agent);
         if (t >= 1) {
           trip.phase = 'done'; trip.startedAt = now;
-          spawnSparks(agentX + agentW, ay, trip.color, 8, 0.07);   // 落地智能体：火花绽开
+          spawnSparks(an.px, an.py, trip.color, 8, 0.07);      // 落地智能体行星：火花绽开
         }
       } else if (trip.phase === 'done') {
-        // 落地一闪：智能体芯片外圈快速收敛。
+        // 落地一闪：行星外圈快速收敛的光环。
         const k = Math.min(1, elapsed / 500);
         if (k < 1) {
           ctx.save();
@@ -1030,7 +1016,7 @@
           ctx.globalAlpha = 0.7 * (1 - k);
           ctx.lineWidth = 1.4;
           ctx.beginPath();
-          ctx.arc(agentX + agentW, ay, 8 + 16 * k, 0, Math.PI * 2);
+          ctx.arc(an.px, an.py, 8 + 16 * k, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
           activeAgents.add(trip.agent);
@@ -1058,7 +1044,7 @@
     // 事件火花：命中/过站/落地迸出的粒子。
     drawRouteSparks(ctx, now);
 
-    // 芯片：智能体 / 网关 / 模型。智能体名按遮蔽设置渲染。
+    // 行星与恒星标注：回到普通混合保证可读。行星 = 亮面朝恒星的球体 + 大气辉光 + 名称标注。
     const agentCalls = new Map(), modelMs = new Map();
     rows.forEach((r) => {
       agentCalls.set(r.agent, (agentCalls.get(r.agent) || 0) + 1);
@@ -1068,52 +1054,67 @@
         modelMs.set(r.model, list);
       }
     });
-    // 芯片回到普通混合保证可读；入场走全息光柱 + 底座光垫。
     ctx.globalCompositeOperation = 'source-over';
-    const drawChipHolo = (x, y, w, h, node, accent, active) => {
-      // 底座光垫：芯片脚下的一小片椭圆辉光。
+    const drawPlanet = (node, accent, active, label, sub, litSign, calls) => {
+      const alpha = alphaOf(node);
+      if (node.px == null || alpha <= 0.02) return;
+      // 半径随活跃度：常去的天体更大；入场从 30% 缩放到位（物质化）。
+      const r = (6.5 + Math.min(4, calls * 0.35) + (active ? 1 : 0)) * (node.state === 'in' && !reduce ? 0.3 + 0.7 * alpha : 1);
+      const x = node.px, y = node.py;
       ctx.save();
-      ctx.globalAlpha = 0.30 * alphaOf(node);
+      ctx.globalAlpha = alpha;
+      // 大气辉光
+      ctx.globalAlpha = alpha * (active ? 0.34 : 0.15);
       ctx.fillStyle = accent;
       ctx.beginPath();
-      ctx.ellipse(x + w / 2, y + h + 3, w * 0.34, 2.6, 0, 0, Math.PI * 2);
+      ctx.arc(x, y, r * (active ? 2.6 : 1.9), 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
-      // 入场光柱：淡入期间一道竖直渐变光从芯片向上射出，随淡入完成而散。
-      if (node.state === 'in' && !reduce) {
-        const k = Math.min(1, (now - node.since) / 500);
-        const beamH = 46 * (1 - k * 0.4);
-        const beam = ctx.createLinearGradient(0, y - beamH, 0, y);
-        beam.addColorStop(0, 'rgba(111, 242, 255, 0)');
-        beam.addColorStop(1, 'rgba(111, 242, 255, ' + (0.5 * (1 - k)).toFixed(3) + ')');
-        ctx.save();
-        ctx.globalAlpha = alphaOf(node);
-        ctx.fillStyle = beam;
-        ctx.fillRect(x + w * 0.3, y - beamH, w * 0.4, beamH);
-        ctx.restore();
+      // 本体：亮面朝恒星（litSign 指向恒星一侧），暗面沉入夜色
+      ctx.globalAlpha = alpha;
+      const g = ctx.createRadialGradient(x + litSign * r * 0.55, y - r * 0.3, r * 0.1, x, y, r * 1.05);
+      g.addColorStop(0, '#f0feff');
+      g.addColorStop(0.42, accent);
+      g.addColorStop(1, '#071120');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      // 活跃临边光弧
+      if (active) {
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.strokeStyle = '#eafcff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 1.6, 0, Math.PI * 2);
+        ctx.stroke();
       }
+      // 标注：名称 + 读数
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = active ? '#eafcff' : '#f2f9ff';
+      ctx.font = '600 10px ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(label, x, y + r + 13, 130);
+      ctx.fillStyle = '#7e95ad';
+      ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(sub, x, y + r + 23, 130);
+      ctx.restore();
     };
-    routeNodes.agents.forEach((node, name) => {
-      const y = agentPos.get(name);
-      const alpha = alphaOf(node);
-      if (y == null || alpha <= 0.02) return;
-      const cy = y - chipH / 2;
-      drawChipHolo(agentX, cy, agentW, chipH, node, ROUTE_C.request, activeAgents.has(name));
-      drawRouteChip(ctx, agentX, cy, agentW, chipH,
-        mask(name), integer(agentCalls.get(name) || 0) + ' 次', ROUTE_C.request, activeAgents.has(name), alpha);
-    });
-    routeNodes.models.forEach((node, name) => {
-      const y = modelPos.get(name);
-      const alpha = alphaOf(node);
-      if (y == null || alpha <= 0.02) return;
-      const cy = y - chipH / 2;
-      drawChipHolo(modelX, cy, modelW, chipH, node, ROUTE_C.response, activeModels.has(name));
-      drawRouteChip(ctx, modelX, cy, modelW, chipH,
-        name, secs(median(modelMs.get(name) || [])), ROUTE_C.response, activeModels.has(name), alpha);
-    });
-    drawRouteChip(ctx, gwX, H / 2 - chipH / 2, gwW, chipH, 'MAGPIE 网关',
-      '今日 ' + integer(todayCalls) + ' · 在途 ' + running,
-      ROUTE_C.request, parkedCount > 0 || running > 0 || transit > 0);
+    routeNodes.agents.forEach((node, name) => drawPlanet(node, ROUTE_C.request, activeAgents.has(name),
+      mask(name), integer(agentCalls.get(name) || 0) + ' 次', 1, agentCalls.get(name) || 0));
+    routeNodes.models.forEach((node, name) => drawPlanet(node, ROUTE_C.response, activeModels.has(name),
+      name, secs(median(modelMs.get(name) || [])), -1, (modelMs.get(name) || []).length));
+    // 恒星标注：网关溶入恒星本体，只在下方留一行铭牌。
+    ctx.save();
+    ctx.globalAlpha = 0.92 * routeCoreAlpha;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f2f9ff';
+    ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText('MAGPIE 网关', cx, cy + 74);
+    ctx.fillStyle = '#7e95ad';
+    ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText('今日 ' + integer(todayCalls) + ' · 在途 ' + running, cx, cy + 86);
+    ctx.restore();
   }
 
   /** 舞台主循环：有移动包 30fps，只剩停泊 8fps；节点淡入淡出与重排期间保持循环，落地闪放完才停帧。 */
