@@ -197,13 +197,14 @@
   /** 燃尽速度 → 估算用尽：只用当前窗口内的真实下降，重置先到就不估。 */
   function burnEstimate(line) {
     const pts = (line && line.points) || [];
-    if (pts.length < 2) return null;
+    if (pts.length < 3) return null;
     const start = pts[pts.length - 1].start;
     const win = (start ? pts.filter((p) => p.start === start) : pts).slice();
-    if (win.length < 2) return null;
+    if (win.length < 3) return null;
     const first = win[0], last = win[win.length - 1];
+    if (last.left <= 0) return null;
     const hours = (new Date(last.at) - new Date(first.at)) / 3.6e6;
-    if (hours < 0.05 || first.left <= last.left) return null;
+    if (hours < 0.25 || first.left <= last.left) return null;
     const rate = (first.left - last.left) / hours;      // 每小时烧掉的百分点
     if (rate < 0.5) return null;                        // 几乎没在烧，估了也是噪声
     const etaH = last.left / rate;
