@@ -510,6 +510,21 @@
     ctx.beginPath();
     ctx.arc(hx, hy, width * 0.85 + 0.6, 0, Math.PI * 2);
     ctx.fill();
+    // 头部十字耀斑：横向沿运动方向、纵向垂直，能量感十足。
+    const flare = width * 2.6 + 2.5;
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = '#f4feff';
+    ctx.lineWidth = 0.8;
+    const [px0, py0] = cubicAt(p, Math.max(0, t1 - 0.02));
+    const dx = hx - px0, dy = hy - py0;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len, ny = dy / len;
+    ctx.beginPath();
+    ctx.moveTo(hx - nx * flare, hy - ny * flare);
+    ctx.lineTo(hx + nx * flare, hy + ny * flare);
+    ctx.moveTo(hx - ny * flare * 0.55, hy + nx * flare * 0.55);
+    ctx.lineTo(hx + ny * flare * 0.55, hy - nx * flare * 0.55);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -521,6 +536,20 @@
     r: 1.12 + ((i * 7) % 10) / 10 * 0.5,                 // 轨道半径系数
     sp: 0.55 + ((i * 13) % 7) / 7 * 0.9,                 // 角速度系数
     warm: i % 3 === 0                                    // 少量冰蓝粒子，其余青
+  }));
+  /* 吸积盘：同一倾斜平面上的致密粒子环，开普勒速度（内圈快外圈慢）。 */
+  const ROUTE_DISK = Array.from({ length: 130 }, (_, i) => ({
+    a: (i * 2.39996) % (Math.PI * 2),                    // 黄金角分布，均匀不扎堆
+    r: 1.02 + ((i * 17) % 100) / 100 * 0.72,             // 半径系数 1.02–1.74
+    sp: 0.9 / Math.sqrt(1.02 + ((i * 17) % 100) / 100 * 0.72), // 开普勒：1/√r
+    s: 0.55 + ((i * 11) % 10) / 10 * 0.6                 // 粒子大小
+  }));
+  /* 背景星尘：舞台内缓慢漂移的微光点。 */
+  const ROUTE_DUST = Array.from({ length: 42 }, (_, i) => ({
+    x: ((i * 37) % 100) / 100,
+    y: ((i * 61) % 100) / 100,
+    sp: 0.004 + ((i * 13) % 7) / 7 * 0.01,
+    tw: (i * 0.9) % (Math.PI * 2)
   }));
   let routeCorePhase = 0;         // 粒子相位累积器（平滑变速）
   let routeCoreLastNow = 0;
@@ -596,6 +625,23 @@
     };
     strokeCircle3D(ringTilt(1.05, 1), 0.5, energy * 0.5);
     strokeCircle3D(ringTilt(0.55, -1), 0.42, energy * 0.5);
+    // 吸积盘：同一倾斜平面（与第一条陀螺环同角）的致密粒子环，开普勒速度内快外慢。
+    {
+      const inc = 1.05, ci = Math.cos(inc), si = Math.sin(inc);
+      const diskN = reduce ? 40 : Math.round(55 + 75 * Math.min(1, energy + 0.3));
+      for (let i = 0; i < diskN; i += 1) {
+        const p = ROUTE_DISK[i];
+        const ang = p.a + routeCorePhase * p.sp * 1.35;
+        const x = R * p.r * Math.cos(ang), z = R * p.r * Math.sin(ang);
+        const [px, py, pz] = proj(x, z * si, z * ci);
+        const k = (pz / (R * p.r) + 1) / 2;   // 深度 0（后）–1（前）
+        ctx.globalAlpha = alpha * (0.10 + 0.34 * k) * (0.55 + 0.45 * energy);
+        ctx.fillStyle = p.r < 1.25 ? '#d9fdff' : (i % 4 === 0 ? ROUTE_C.response : ROUTE_C.request);
+        ctx.beginPath();
+        ctx.arc(px, py, p.s * (0.7 + 0.5 * k), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     // 纬度能量波：每 ~2.2s（运转更频繁）一道亮环从赤道向两极扫。
     const waveEvery = reduce ? 1e9 : 2400 - energy * 1300;
     if (now - routeCoreWaveAt > waveEvery) routeCoreWaveAt = now;
@@ -687,6 +733,23 @@
     const running = rows.filter((r) => !r.done).length;
     const stageIdle = routeTrips.size === 0 && running === 0;
 
+    // 发光层统一加性混光：光是叠出来的，不是画出来的；芯片面板最后回到普通混合保证可读。
+    ctx.globalCompositeOperation = 'lighter';
+    const energy = Math.min(1, (stageIdle ? 0 : 0.3) + 0.25 * Math.min(3, gwEnergyRef.n) + 0.5 * routeCoreKick);
+    // 背景星尘：舞台内缓慢漂移的微光点，随能量略亮。
+    {
+      const dustA = 0.10 + 0.10 * energy;
+      ctx.fillStyle = '#9fd8ff';
+      ROUTE_DUST.forEach((d) => {
+        const x = ((d.x + now * d.sp / 100000) % 1) * W;
+        ctx.globalAlpha = dustA * (0.5 + 0.5 * Math.sin(now / 900 + d.tw));
+        ctx.beginPath();
+        ctx.arc(x, d.y * H, 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
     // 拓扑：登记表驱动——新节点淡入、离场节点淡出、位置缓动重排；
     // 活跃行程的端点在 syncRouteNodes 里优先占位，这里只读登记表。
     // 两个登记表都空（完全没有触发的智能体/模型）时只剩网关自己的呼吸核心。
@@ -726,7 +789,6 @@
     if (routeCoreAlpha < 0.98) routeLayoutBusy = true;
     routeCoreKick *= reduce ? 0 : 0.90;
     if (routeCoreKick > 0.02) routeLayoutBusy = true;
-    const energy = Math.min(1, (stageIdle ? 0 : 0.3) + 0.25 * Math.min(3, gwEnergyRef.n) + 0.5 * routeCoreKick);
     const gwGlow = stageIdle
       ? 0.08 + routeCoreAlpha * (reduce ? 0.02 : 0.02 + 0.06 * (0.5 + 0.5 * Math.sin(now / 700)))
       : 0.08 + routeCoreAlpha * (0.04 + 0.07 * energy);
@@ -739,16 +801,37 @@
     // 3D 核心常驻：能量驱动转速与亮度；待机时是慢转呼吸态。
     if (routeCoreAlpha > 0.02) drawGatewayCore(ctx, W / 2, H / 2, now, reduce, routeCoreAlpha, energy);
 
-    // 链路底图：虚线，随节点一起淡入淡出。
+    // 先算活跃端点：链路辉光要在虚线下面垫一层。
+    const activeAgents = new Set(), activeModels = new Set();
+    routeTrips.forEach((trip) => {
+      if (trip.phase === 'req1' || trip.phase === 'req2' || trip.phase === 'res2') activeAgents.add(trip.agent);
+      if (trip.phase === 'parked' || trip.phase === 'res1') activeModels.add(trip.model);
+      if (trip.phase === 'done' && now - trip.startedAt <= 600) activeAgents.add(trip.agent);
+    });
+
+    // 链路：流动虚线（智能体侧流向网关、模型侧流出）+ 活跃链路辉光垫层。
     ctx.save();
     ctx.setLineDash([2, 5]);
+    ctx.lineDashOffset = -(now / 38) % 7;
     routeNodes.agents.forEach((node, name) => {
       const y = agentPos.get(name);
       const alpha = alphaOf(node);
       if (y == null || alpha <= 0.02) return;
       const p = legPoints(agentX + agentW, y, gwX, H / 2);
+      if (activeAgents.has(name)) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = alpha * 0.16;
+        ctx.strokeStyle = ROUTE_C.request;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1]);
+        ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.globalAlpha = alpha;
-      ctx.strokeStyle = ROUTE_C.link;
+      ctx.strokeStyle = activeAgents.has(name) ? 'rgba(111, 242, 255, 0.55)' : ROUTE_C.link;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(p[0], p[1]);
@@ -760,8 +843,20 @@
       const alpha = alphaOf(node);
       if (y == null || alpha <= 0.02) return;
       const p = legPoints(gwX + gwW, H / 2, modelX, y);
+      if (activeModels.has(name)) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = alpha * 0.16;
+        ctx.strokeStyle = ROUTE_C.response;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1]);
+        ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.globalAlpha = alpha;
-      ctx.strokeStyle = ROUTE_C.link;
+      ctx.strokeStyle = activeModels.has(name) ? 'rgba(159, 209, 255, 0.55)' : ROUTE_C.link;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(p[0], p[1]);
@@ -787,7 +882,6 @@
     }
 
     // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。端点坐标取节点当前位置，重排时彗星跟着走。
-    const activeAgents = new Set(), activeModels = new Set();
     let parkedCount = 0;
     let transit = 0;
     routeTrips.forEach((trip) => {
@@ -898,18 +992,47 @@
         modelMs.set(r.model, list);
       }
     });
+    // 芯片回到普通混合保证可读；入场走全息光柱 + 底座光垫。
+    ctx.globalCompositeOperation = 'source-over';
+    const drawChipHolo = (x, y, w, h, node, accent, active) => {
+      // 底座光垫：芯片脚下的一小片椭圆辉光。
+      ctx.save();
+      ctx.globalAlpha = 0.30 * alphaOf(node);
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h + 3, w * 0.34, 2.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // 入场光柱：淡入期间一道竖直渐变光从芯片向上射出，随淡入完成而散。
+      if (node.state === 'in' && !reduce) {
+        const k = Math.min(1, (now - node.since) / 500);
+        const beamH = 46 * (1 - k * 0.4);
+        const beam = ctx.createLinearGradient(0, y - beamH, 0, y);
+        beam.addColorStop(0, 'rgba(111, 242, 255, 0)');
+        beam.addColorStop(1, 'rgba(111, 242, 255, ' + (0.5 * (1 - k)).toFixed(3) + ')');
+        ctx.save();
+        ctx.globalAlpha = alphaOf(node);
+        ctx.fillStyle = beam;
+        ctx.fillRect(x + w * 0.3, y - beamH, w * 0.4, beamH);
+        ctx.restore();
+      }
+    };
     routeNodes.agents.forEach((node, name) => {
       const y = agentPos.get(name);
       const alpha = alphaOf(node);
       if (y == null || alpha <= 0.02) return;
-      drawRouteChip(ctx, agentX, y - chipH / 2, agentW, chipH,
+      const cy = y - chipH / 2;
+      drawChipHolo(agentX, cy, agentW, chipH, node, ROUTE_C.request, activeAgents.has(name));
+      drawRouteChip(ctx, agentX, cy, agentW, chipH,
         mask(name), integer(agentCalls.get(name) || 0) + ' 次', ROUTE_C.request, activeAgents.has(name), alpha);
     });
     routeNodes.models.forEach((node, name) => {
       const y = modelPos.get(name);
       const alpha = alphaOf(node);
       if (y == null || alpha <= 0.02) return;
-      drawRouteChip(ctx, modelX, y - chipH / 2, modelW, chipH,
+      const cy = y - chipH / 2;
+      drawChipHolo(modelX, cy, modelW, chipH, node, ROUTE_C.response, activeModels.has(name));
+      drawRouteChip(ctx, modelX, cy, modelW, chipH,
         name, secs(median(modelMs.get(name) || [])), ROUTE_C.response, activeModels.has(name), alpha);
     });
     drawRouteChip(ctx, gwX, H / 2 - chipH / 2, gwW, chipH, 'MAGPIE 网关',
