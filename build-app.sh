@@ -18,7 +18,12 @@ mkdir -p "$MACOS" "$RESOURCES"
 cp "$ROOT/.build/release/MagpieWatch" "$MACOS/MagpieWatch"
 cp "$ROOT/Info.plist" "$CONTENTS/Info.plist"
 mkdir -p "$RESOURCES/Wallpaper"
-cp "$ROOT/design/starport.html" "$ROOT/design/three.min.js" "$RESOURCES/Wallpaper/"
+cp "$ROOT/design/dashboard.html" "$ROOT/design/dashboard.css" "$ROOT/design/dashboard.js" \
+   "$ROOT/design/magpie-bird.svg" "$RESOURCES/Wallpaper/"
+mkdir -p "$RESOURCES/Pets"
+cp -R "$ROOT/Resources/Pets/WhaleMusume" "$RESOURCES/Pets/"
+cp "$ROOT/Resources/Pets/SOURCES.md" "$RESOURCES/Pets/"
+cp "$ROOT/design/pet.html" "$ROOT/design/pet.css" "$ROOT/design/pet.js" "$RESOURCES/Pets/"
 
 if [[ -f "$ICON_SOURCE" ]]; then
     cp "$ICON_SOURCE" "$RESOURCES/AppIcon.icns"

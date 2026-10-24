@@ -23,3 +23,28 @@ screenshots/preferences.png
 screenshots/screensaver.png
 screenshots/wallpaper.png
 screenshots/wallpaper-v2.png
+
+# 探索性稿与本地截图（不随应用分发，也不进版本库）
+design/shots/
+design/_measure.html
+design/concepts.js
+design/full.html
+design/roundtrip.html
+design/roundtrip.prev.html
+design/routing-*
+design/token-studies.*
+design/wallpaper-concepts.html
+design/three.module.js
+design/magpie-logo.png
+design/preview-tokenflow.png
+design/wallpaper-live.png
+screenshots-preview/
+screenshots/routing/
+screenshots/starport-demo.png
+pr-description.md
+.claude/
+
+# 历史生成宠物 PNG：保留在本机，不打包也不进版本库
+Resources/Pets/orbit-bot.png
+Resources/Pets/star-fox.png
+Resources/Pets/whale-maid.png

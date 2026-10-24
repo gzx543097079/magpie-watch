@@ -11,6 +11,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var lastError: String?
     @Published private(set) var refreshGeneration = 0
+    @Published private(set) var requests: UsageRequestsResponse?
+    @Published private(set) var requestsUpdatedAt: Date?
+    @Published private(set) var requestsError: String?
+    @Published private(set) var isLoadingRequests = false
+    @Published private(set) var traceUpdatedAt: Date?
+    @Published private(set) var traceIsFresh = false
+    @Published private(set) var usageIsFresh = false
+    @Published private(set) var quotasIsFresh = false
+    /// 30 天逐日用量，用来在本地按自然周、自然月汇总（接口只支持 today/7d/30d/all）。
+    @Published private(set) var dailyUsage: UsageResponse?
+    private var dailyUsageFetchedAt: Date?
+    var isConsumptionVisible = false
 
     @Published var widgetExpanded: Bool {
         didSet { defaults.set(widgetExpanded, forKey: Keys.widgetExpanded) }
@@ -44,9 +56,19 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(isWallpaperEnabled, forKey: Keys.wallpaperEnabled) }
     }
 
+    /// 桌面态右侧要让开的一列文件夹宽度（点）。全屏时归零，画面顶满两边。
+    @Published var wallpaperRightInset: Int {
+        didSet { defaults.set(wallpaperRightInset, forKey: Keys.wallpaperRightInset) }
+    }
+
     @Published var isPetEnabled: Bool {
         didSet { defaults.set(isPetEnabled, forKey: Keys.petEnabled) }
     }
+
+    @Published var petSkin: PetSkin {
+        didSet { defaults.set(petSkin.rawValue, forKey: "magpie.pet.skin") }
+    }
+    @Published var wallpaperPreview = false
 
     @Published var theme: WatchThemeID {
         didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
@@ -74,6 +96,7 @@ final class AppModel: ObservableObject {
         let savedIdleMinutes = defaults.object(forKey: Keys.idleMinutes) as? Int
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
         let savedWallpaper = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool
+        let savedRightInset = defaults.object(forKey: Keys.wallpaperRightInset) as? Int
         let savedPet = defaults.object(forKey: Keys.petEnabled) as? Bool
         let savedTheme = defaults.string(forKey: Keys.theme)
 
@@ -81,12 +104,14 @@ final class AppModel: ObservableObject {
         isWidgetVisible = savedVisible ?? false
         isPinned = savedPinned ?? true
         clickThrough = savedClickThrough ?? false
-        autoScreensaver = savedAutoScreensaver ?? true
+        autoScreensaver = savedAutoScreensaver ?? false
         idleMinutes = savedIdleMinutes ?? 5
         maskEmails = savedMaskEmails ?? true
-        isWallpaperEnabled = savedWallpaper ?? false
+        isWallpaperEnabled = savedWallpaper ?? true
+        wallpaperRightInset = savedRightInset ?? 120
         isPetEnabled = savedPet ?? true
         theme = WatchThemeID(rawValue: savedTheme ?? "") ?? .aurora
+        petSkin = PetSkin(rawValue: defaults.string(forKey: "magpie.pet.skin") ?? "") ?? .whale
     }
 
     deinit {
@@ -132,7 +157,11 @@ final class AppModel: ObservableObject {
         }
         if let newTrace {
             trace = newTrace
+            traceUpdatedAt = Date()
         }
+        traceIsFresh = newTrace != nil
+        usageIsFresh = newUsage != nil
+        quotasIsFresh = newQuotas != nil
 
         let connected = newService != nil || newUsage != nil || newQuotas != nil || newTrace != nil
         isOnline = connected
@@ -142,7 +171,32 @@ final class AppModel: ObservableObject {
             refreshGeneration &+= 1
         } else {
             lastError = "无法连接 127.0.0.1:3425，请确认 Magpie 正在运行"
+            refreshGeneration &+= 1
         }
+        if isWallpaperEnabled || isConsumptionVisible { await refreshConsumption() }
+        if connected, isWallpaperEnabled, Date().timeIntervalSince(dailyUsageFetchedAt ?? .distantPast) > 60 {
+            if let daily = try? await api.usage(period: "30d") {
+                dailyUsage = daily
+                dailyUsageFetchedAt = Date()
+            }
+        }
+    }
+
+    func refreshConsumption() async {
+        guard !isLoadingRequests else { return }
+        isLoadingRequests = true
+        defer { isLoadingRequests = false }
+        do {
+            requests = try await api.requests()
+            requestsUpdatedAt = Date()
+            requestsError = nil
+        } catch {
+            requestsError = "请求账本暂不可用，保留上次记录；仍可查看路由数据。"
+        }
+    }
+
+    var consumptionRecords: [ConsumptionRecord] {
+        ConsumptionRecord.merge(trace: trace, ledger: requests)
     }
 
     func toggleWidget() {
@@ -170,9 +224,20 @@ final class AppModel: ObservableObject {
     var wallpaperBoard: WallpaperFlowBoard {
         WallpaperBoardBuilder.make(
             usage: usage,
-            trace: isOnline ? trace : nil,
+            trace: isOnline && traceIsFresh ? trace : nil,
             service: service,
             isOnline: isOnline
+        )
+    }
+
+    /// 动态壁纸只画此刻有真实请求的智能体和模型。
+    var activeWallpaperBoard: WallpaperFlowBoard {
+        WallpaperBoardBuilder.make(
+            usage: usage,
+            trace: isOnline && traceIsFresh ? trace : nil,
+            service: service,
+            isOnline: isOnline,
+            activeOnly: true
         )
     }
 
@@ -404,6 +469,7 @@ private enum Keys {
     static let idleMinutes = "magpie.screensaver.idleMinutes"
     static let maskEmails = "magpie.privacy.maskEmails"
     static let wallpaperEnabled = "magpie.wallpaper.enabled"
+    static let wallpaperRightInset = "magpie.wallpaper.rightInset"
     static let petEnabled = "magpie.wallpaper.petEnabled"
     static let theme = "magpie.theme"
 }

@@ -1,0 +1,27 @@
+/* Breathing, sway, squash-swap and emoji motion adapted from dsh-whale-musume.
+   Copyright (c) 2026 Sutera-Diffusus, MIT. See WhaleMusume/LICENSE. */
+:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;user-select:none}
+#pet{position:absolute;left:8px;right:8px;bottom:40px;aspect-ratio:1;transform-origin:50% 80%;--accent:#81dfff}
+#float,#motion,#gaze{position:absolute;inset:0;transform-origin:50% 85%}
+#float{animation:breathe 3.4s ease-in-out infinite}
+#gaze{transform:translate(var(--gx,0px),var(--gy,0px));transition:transform .18s ease-out}
+#art{width:100%;height:100%;object-fit:contain;pointer-events:none;animation:sway 6s ease-in-out infinite;transform-origin:50% 92%;filter:drop-shadow(0 5px 5px #00132755)}
+#aura{position:absolute;inset:23% 14% 6%;border-radius:50%;background:radial-gradient(ellipse,var(--accent),transparent 65%);opacity:0;filter:blur(14px);transition:opacity .6s}
+#pet[data-state="tool"] #aura,#pet[data-state="thinking"] #aura{opacity:.25;animation:glow 2.6s ease-in-out infinite}
+#pet[data-state="success"]{--accent:#ffd58c}#pet[data-state="success"] #aura{opacity:.35}
+#pet[data-state="failure"]{--accent:#ff99b5}#pet[data-state="failure"] #aura{opacity:.25}
+#status{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);max-width:95%;white-space:nowrap;padding:4px 10px;border-radius:10px;background:#10283dba;border:1px solid #a9d9ea30;color:#dcf3fb;font-size:10px;letter-spacing:.04em;backdrop-filter:blur(12px)}
+#bubble{position:absolute;z-index:5;top:6px;left:14px;right:14px;padding:8px 12px;text-align:center;background:#f1fafff5;color:#254c66;border:1px solid #b9eaffb8;border-radius:15px;font-size:11px;line-height:1.5;opacity:0;transform:translateY(5px);transition:opacity .16s,transform .16s;box-shadow:0 4px 10px #001c3720}
+#bubble.show{opacity:1;transform:none}
+#bubble:after{content:"";position:absolute;bottom:-5px;left:50%;width:8px;height:8px;background:#f1faff;transform:rotate(45deg)}
+#pet.dragging #float,#pet.dragging #art{animation:none}
+#pet.dragging #gaze{transform:translateY(-5px) rotate(var(--tilt,-5deg)) scale(1.025)}
+#particles{position:absolute;inset:0;pointer-events:none}
+.spark{position:absolute;left:50%;top:38%;font-size:19px;animation:emoji-fly .9s cubic-bezier(.22,1.2,.36,1) both}
+@keyframes breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes sway{0%,100%{transform:rotate(0deg)}25%{transform:rotate(1.2deg) translateX(1px)}75%{transform:rotate(-1.2deg) translateX(-1px)}}
+@keyframes glow{50%{opacity:.4;transform:scale(1.06)}}
+@keyframes emoji-fly{0%{opacity:0;transform:scale(.3)}18%{opacity:1;transform:translate(var(--dx),-16px) scale(1.2)}100%{opacity:0;transform:translate(calc(var(--dx)*1.8),-80px) scale(.8) rotate(var(--spin))}}
+body.paused *,body.reduced *{animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

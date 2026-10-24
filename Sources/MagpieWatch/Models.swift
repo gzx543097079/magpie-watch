@@ -29,6 +29,7 @@ struct UsageResponse: Decodable {
     let decodeOut: Int?
     let decodeN: Int?
     let bucket: String?
+    let sessionCount: Int?
     let series: [UsagePoint]?
     let agents: [UsageAgent]?
     let models: [UsageModel]?
@@ -60,7 +61,12 @@ struct UsageAgent: Decodable, Identifiable {
     let input: Int?
     let output: Int?
     let cacheRead: Int?
+    let cacheWrite: Int?
     let cost: Double?
+    let timed: Int?
+    let ttftMs: Int?
+    let decodeMs: Int?
+    let decodeOut: Int?
 }
 
 struct UsageModel: Decodable, Identifiable {
@@ -73,7 +79,12 @@ struct UsageModel: Decodable, Identifiable {
     let input: Int?
     let output: Int?
     let cacheRead: Int?
+    let cacheWrite: Int?
     let cost: Double?
+    let timed: Int?
+    let ttftMs: Int?
+    let decodeMs: Int?
+    let decodeOut: Int?
     let name: String?
     let sub: String?
     let icon: String?
@@ -181,6 +192,9 @@ struct TraceRoute: Decodable, Identifiable {
     let flow: Int?
     let served: String?
     let usage: [RouteUsage]?
+    let kind: String?
+    let folder: String?
+    let prompt: PromptBudget?
 }
 
 struct TraceGroup: Decodable {

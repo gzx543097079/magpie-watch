@@ -1,10 +1,52 @@
 # MAGPIE 观测台 · 续接文档
 
-> 最后核对：2026-10-22  
+> 壁纸与桌宠最后核对：2026-10-23（下方旧模块记录保留原核对日期）
 > 项目目录：`/Users/gengzhixiang/Desktop/桌面小组件/MagpieWatch`（2026-10-22 起全部项目内容集中在此子文件夹）  
 > 当前版本：`1.0.0 (1)`
 
 本文档面向后续开发者，记录当前实现边界、关键决策、接口约定、验证方法和建议的下一步。产品目标与设计原则见 [PRODUCT.md](PRODUCT.md)，用户安装说明见 [README.md](README.md)。
+
+## 2026-10-24：壁纸改为数据中心式数据面板（当前）
+
+- 壁纸不再有 token 流向动画。`design/starport.*` 与 Three.js 已从打包流程移除；`WallpaperWebScene` 加载同源页面 `dashboard.html`，页面经 `LocalOrigin` 反代 `/v1/magpie/*`。
+- 版面：12 列网格。左 4 列整列是账号额度（`grid-row: 1 / -1`），右 8 列分三段 —— 今日（支出 / 缓存命中率 / DeepSeek 等价 / 最近三小时）、实时数据流（KPI、单次耗时竖条、模型与项目分布、最近路由明细）、智能体排行。行高 `26fr / 55fr / 19fr`。
+- 额度列：无额度窗口的账号合并成末尾一行 `无额度窗口 N 个`，其余按服务商分组；整列不再溢出（`scrollHeight == clientHeight`）。
+- 留白：`--dock-left` 让开 Dock，`--dock-right` 让开一列文件夹（偏好设置 0 / 120 / 150 / 200 / 260，默认 120），`--dock-bottom` 让开底部。全屏时三者归零，画面顶满左右。
+- 全屏过渡：窗口层 `NSAnimationContext` 淡入 0.55 s easeOut、淡出 0.4 s easeIn；页面层 padding 0.72 s `cubic-bezier(0.22, 0.61, 0.36, 1)`，配合 `body.settling` 的 `settle` 关键帧（模块错峰 0.04–0.19 s）与顶边扫光。
+- 本轮验证：`swift build -c release`、`swift test`（14 项）、`./build-app.sh` 打包签名通过；壁纸窗口 1920 × 1080 实拍核对版面与额度列不溢出。`node` 不在本机 PATH，`Tests/Web/*.mjs` 本轮未执行。
+- 遗留：`WallpaperFlowScene` / `WallpaperRouteScene` / `WallpaperView` / `ScreensaverView` / `RouteVisuals` / `WallpaperDashboard` 已无引用，仍留在 target 内；`design/starport.*`、`design/three.min.js`、`Tests/Web/scene-regression*` 依赖的仍是旧场景。
+
+## 2026-10-23：数据直接展示在桌面
+
+- 账号余额 / 剩余额度、缓存命中率、今日输入 / 缓存 / 输出固定在壁纸顶部；最近三次调用的用途、来源、结算状态和用量显示在桌面底部。
+- 桌宠工作台只有装扮和动作。Token 明细由菜单栏独立入口打开（⌘T、`--token-details`），不再归属于桌宠。
+- 隐藏桌宠不影响桌面统计和请求账本刷新。上下文主项只作为归属线索，不当作单项操作账单。
+- 本轮验证：12 项 Swift 测试、场景 JavaScript 回归、release 打包与签名校验通过。1920 × 1080 原生壁纸实拍见 `screenshots/desktop-telemetry-live.png`（本机真实数据，非演示）。
+- 原生验证：底部按钮打开装扮页、动作页切换、睡衣选择及重启后保留、恢复原装扮；⌘T 在应用获得焦点时打开独立 Token 明细，成功选择已完成请求并展开 `js / exec_command / write_stdin / apply_patch` 返回占用。关闭两个详情窗口后，壁纸与桌宠继续运行。
+- 尚未验证：多显示器插拔、长期耗电。当前请求刷新约 4 秒；货币余额仅在数据源实际提供时展示。
+
+## 2026-10-23：鲸鱼娘原版、独立工作台与桌面统计
+
+- 原版资源、MIT 核心与许可固定在 `Resources/Pets/WhaleMusume`，版本和 SHA-256 见 manifest。历史生成 PNG 保留但不打包。
+- `PetWindowController` 现在为 246 × 316，单击互动、拖动移动、双击或底部按钮打开 `PetDetailWindowController`。装扮与动作不再依赖二级悬停菜单。菜单栏菜单在 tracking 期间不重建。
+- `ConsumptionModels` 解码 trace 的 `kind/folder/prompt.parts[].items[]` 和 `/v1/magpie/usage/requests?period=today&limit=100`。账本通过 `route_id` 与路由合并，账本用量优先；缺失值不变成 0。壁纸启用或独立消耗分析窗口可见时轮询账本，完全不依赖桌宠。
+- 只使用结构名称和计数，不读取对话正文。文件/工具项是本次上下文构成，可能含历史返回；不能称为单次工具的独立账单。输出内推理不再额外相加。
+- `DesktopAccountSummary` 将额度、遮蔽账号传给壁纸顶部统计。当前 Magpie 0.1.1300 返回三个订阅账号的周期剩余百分比，没有货币余额。新输入、缓存读取、输出、缓存命中率独立展示。旧快照显式标记。
+- 测试新增消费归属、账本去重、未知值、原版桌宠动作优先级、预览隔离、静态/减少动态效果与统计 DOM 文本安全。
+
+以下为此前阶段记录，旧宠物素材和尺寸以本节为准。
+
+## 2026-10-23：星潮壁纸与独立桌宠
+
+最新需求优先实现「动态壁纸 + 可移动宠物」，技术不限。已使用 AppKit 桌面窗口 + 本地 WKWebView/Three.js，不再把壁纸中的 SVG 当作可交互宠物。
+
+- `design/starport.{html,css,js}`：吸积盘 shader、星尘、青色输入 / 金色回流、请求光带与错误返回。`WallpaperWebScene.swift` 将本次输入/输出 token、今日统计和明确的 preview 标志传入。
+- `PetWindowController.swift`：独立透明 `NSPanel`，原生拖动与右键菜单，持久化屏内位置和形象；不依赖壁纸开关。`design/pet.html` + `Resources/Pets/*.png` 实现三种插画悬浮动效，素材完整提示见 `SOURCES.md`。
+- `WallpaperBoardBuilder` 保留同一智能体的多条并发请求。
+- 新安装默认打开壁纸和桌宠、关闭小组件和自动屏保；已有偏好继续保存。`--wallpaper-demo` 仅用于明确标注的示例流量。
+- 网关约 4 秒轮询，光流表示 trace 事件，不能声称逐 token 流式观测。未知计量显示「待计量」；离线清空流光。粒子数量有上限，30 fps、DPR 最高 1.5，支持 Reduce Motion。
+
+本轮验证：release 构建与 ad-hoc 签名通过；4 项 Swift 数据测试；JavaScript 场景逻辑回归覆盖并发、双向移动、完成去重、离线、演示隔离与 Reduce Motion。原生应用实测三种换肤、拖动、重启后形象/位置恢复、壁纸开关与演示入口。新的壁纸展示截图为 `screenshots/star-tide-preview.png`（演示数据）。未声称完成多显示器插拔或长期耗电测试。
 
 ## 1. 当前完成状态
 
@@ -414,3 +456,11 @@ open 'dist/Magpie Watch.app'
 - 增加路由 Canvas 动画、紧凑布局、多显示器屏保、偏好设置与邮箱遮蔽。
 - 完成 release 打包、Info.plist 校验和 ad-hoc 签名验证。
 - 补充中文 README 与本文档。
+
+## 2026-10-23 · 壁纸看板与活跃节点
+
+- 壁纸使用 `AppModel.activeWallpaperBoard`（`WallpaperBoardBuilder.make(activeOnly: true)`），只显示此刻有真实路由的智能体与模型；节点在请求到达时带光柱入场，最后一条回流落地后淡出。
+- 左侧看板：今日 Token、今日/本周/本月（由 `/usage?period=30d` 逐日序列按本地自然周/月求和，接口不支持 week/month）、今日效率（错误、重试、会话、费用、推理、平均首字、生成速度）、24 小时请求节奏。右侧：账号额度、智能体排行、模型排行（副标题邮箱按遮蔽设置处理）。数据结构见 `WallpaperDashboard.swift`。
+- 每条链路是双车道着色器光带：青色输入流向模型，金色输出流回智能体，有请求时加速变亮。
+- 本机无 Node 时用 JavaScriptCore 跑场景回归：`/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc Tests/Web/scene-regression-jsc.js`。
+- 实拍：`screenshots/wallpaper-dashboard-live.png`。

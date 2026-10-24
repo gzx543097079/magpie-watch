@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<title>MAGPIE 观测台</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<div class="wall">
+  <header>
+    <div class="brand"><img src="magpie-bird.svg" alt="">MAGPIE<em>数据观测台</em></div>
+    <div class="meta">
+      <time class="clock" id="clock"></time>
+    </div>
+  </header>
+
+  <main>
+    <section class="mod quota-mod c4 r1">
+      <h2>账号额度 <small id="quota-note"></small></h2>
+      <div class="body q-list" id="quota-list"></div>
+      <div class="mod-foot"><span id="quota-foot"></span><span id="quota-foot2"></span></div>
+    </section>
+
+    <section class="mod c8 r1">
+      <h2>今日 <small id="today-note"></small></h2>
+      <div class="body today-grid">
+        <div class="today-main">
+          <div class="hero-row">
+            <div class="hero"><b id="cost">—</b><span>今日支出</span></div>
+            <div class="cache">
+              <div class="cache-top"><b id="cache-rate">—</b><span>缓存命中率</span></div>
+              <div class="track"><i id="cache-bar"></i></div>
+              <div class="cache-sub" id="cache-sub"></div>
+            </div>
+          </div>
+          <div class="flow" id="flow1"></div>
+          <div class="cells" id="cells"></div>
+        </div>
+        <div class="today-side">
+          <div class="equiv" id="equiv">
+            <span>DeepSeek 等价</span>
+            <b id="equiv-usd">—</b>
+            <em id="equiv-note"></em>
+          </div>
+          <div class="flow" id="flow2"></div>
+          <div class="recent-hours" id="recent-hours"></div>
+        </div>
+      </div>
+      <div class="mod-foot"><span id="today-foot"></span><span id="today-foot2"></span></div>
+    </section>
+
+    <section class="mod live-mod c8 r2">
+      <h2>实时数据流 <small id="live-note">最近 60 条路由 · 4 秒刷新</small></h2>
+      <div class="body live-body">
+        <div class="live-kpi" id="live-kpi"></div>
+        <div class="live-chart">
+          <div class="live-chart-head"><span>单次耗时</span><span id="chart-note"></span></div>
+          <canvas id="live-canvas"></canvas>
+        </div>
+        <div class="live-block models">
+          <h3>模型分布 <em>调用 · 中位耗时</em></h3>
+          <div class="bars" id="model-bars"></div>
+        </div>
+        <div class="live-block folders">
+          <h3>项目分布 <em>调用 · 输出 tok</em></h3>
+          <div class="bars" id="folder-bars"></div>
+        </div>
+        <div class="live-table">
+          <div class="lt-head"><span>时间</span><span>智能体</span><span>模型</span><span>耗时</span><span>首字</span><span>输出</span></div>
+          <div class="lt-rows" id="live-rows"></div>
+        </div>
+      </div>
+      <div class="mod-foot"><span id="live-foot"></span><span id="live-foot2"></span></div>
+    </section>
+
+    <section class="mod c8 r3">
+      <h2>智能体 <small>成本 · 延迟</small></h2>
+      <div class="body agents-wide" id="agent-list"></div>
+      <div class="mod-foot"><span id="agent-foot"></span></div>
+    </section>
+  </main>
+
+  <footer>
+    <span id="source-note">数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽</span>
+    <span>缓存读不计入计价 · 推理包含在输出内</span>
+  </footer>
+</div>
+<script src="dashboard.js"></script>
+</body>
+</html>
