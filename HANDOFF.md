@@ -1,20 +1,29 @@
 # MAGPIE 观测台 · 续接文档
 
-> 壁纸与桌宠最后核对：2026-10-23（下方旧模块记录保留原核对日期）
+> 壁纸最后核对：2026-10-24（下方旧模块记录保留原核对日期）
 > 项目目录：`/Users/gengzhixiang/Desktop/桌面小组件/MagpieWatch`（2026-10-22 起全部项目内容集中在此子文件夹）  
 > 当前版本：`1.0.0 (1)`
 
 本文档面向后续开发者，记录当前实现边界、关键决策、接口约定、验证方法和建议的下一步。产品目标与设计原则见 [PRODUCT.md](PRODUCT.md)，用户安装说明见 [README.md](README.md)。
 
-## 2026-10-24：壁纸改为数据中心式数据面板（当前）
+## 2026-10-24：移除桌宠、视觉主题与「预览 Token 流向」（当前）
+
+- 桌宠整块删除：`PetWindowController`、`PetDetailWindowController`、`PetSkin`、`PetActivityTracker`、`design/pet.*`、`Resources/Pets/`（含 WhaleMusume 与许可）、菜单栏「桌宠」子菜单、偏好设置里的开关与装扮选择、`--pet-details` 与 `--wallpaper-demo` 启动参数。`Tests/MagpieWatchTests/PetActivityTests.swift` 与 `Tests/Web/pet-regression.mjs` 一并删除。
+- 视觉主题删除：`WatchThemeID` 与四套配色收敛成单一 `WatchPalette.watch`（沿用原「极光暮色」值）。菜单栏「视觉主题」子菜单、偏好设置色板、`magpie.theme` 键、各视图里 `model.theme` 的 `.environment`/`.animation` 全部去掉。
+- 「预览 Token 流向」删除：`AppModel.wallpaperPreview`、菜单栏与偏好设置开关、`setMagpieConfig` 的 `preview` 字段、`--wallpaper-demo`。`dashboard.js` 里对应的「演示数据」页脚分支也一并去掉。
+- 顺带清掉长期无引用的旧舞台：`WallpaperRouteScene`、`WallpaperFlowScene`、`WallpaperView`、`ScreensaverView`、`RouteVisuals`、`WallpaperDashboard`、`WallpaperBoardTests`、`design/starport.*`、`design/three.min.js`、`Tests/Web/scene-regression*`。屏保仍是同一块数据面板。
+- `ConsumptionWindowController`（原在 `PetDetailWindowController.swift` 里）拆成独立文件，菜单栏「Token 消耗明细…」与 ⌘T 不变。
+- 本轮验证：`swift build -c release` 通过，`swift test` 5 项通过，`./build-app.sh` 打包签名通过。
+
+## 2026-10-24：壁纸改为数据中心式数据面板
 
 - 壁纸不再有 token 流向动画。`design/starport.*` 与 Three.js 已从打包流程移除；`WallpaperWebScene` 加载同源页面 `dashboard.html`，页面经 `LocalOrigin` 反代 `/v1/magpie/*`。
 - 版面：12 列网格。左 4 列整列是账号额度（`grid-row: 1 / -1`），右 8 列分三段 —— 今日（支出 / 缓存命中率 / DeepSeek 等价 / 最近三小时）、实时数据流（KPI、单次耗时竖条、模型与项目分布、最近路由明细）、智能体排行。行高 `26fr / 55fr / 19fr`。
 - 额度列：无额度窗口的账号合并成末尾一行 `无额度窗口 N 个`，其余按服务商分组；整列不再溢出（`scrollHeight == clientHeight`）。
 - 留白：`--dock-left` 让开 Dock，`--dock-right` 让开一列文件夹（偏好设置 0 / 120 / 150 / 200 / 260，默认 120），`--dock-bottom` 让开底部。全屏时三者归零，画面顶满左右。
 - 全屏过渡：窗口层 `NSAnimationContext` 淡入 0.55 s easeOut、淡出 0.4 s easeIn；页面层 padding 0.72 s `cubic-bezier(0.22, 0.61, 0.36, 1)`，配合 `body.settling` 的 `settle` 关键帧（模块错峰 0.04–0.19 s）与顶边扫光。
-- 本轮验证：`swift build -c release`、`swift test`（14 项）、`./build-app.sh` 打包签名通过；壁纸窗口 1920 × 1080 实拍核对版面与额度列不溢出。`node` 不在本机 PATH，`Tests/Web/*.mjs` 本轮未执行。
-- 遗留：`WallpaperFlowScene` / `WallpaperRouteScene` / `WallpaperView` / `ScreensaverView` / `RouteVisuals` / `WallpaperDashboard` 已无引用，仍留在 target 内；`design/starport.*`、`design/three.min.js`、`Tests/Web/scene-regression*` 依赖的仍是旧场景。
+- 本轮验证：`swift build -c release`、`swift test`（14 项）、`./build-app.sh` 打包签名通过；壁纸窗口 1920 × 1080 实拍核对版面与额度列不溢出。
+- 遗留：旧舞台文件当时仍留在 target 内，已在本轮（2026-10-24 移除桌宠与主题）一并删除。
 
 ## 2026-10-23：数据直接展示在桌面
 
@@ -138,11 +147,9 @@ NSApplication
 | `Sources/MagpieWatch/WidgetView.swift` | 展开和紧凑两种小组件布局。 |
 | `Sources/MagpieWatch/ScreensaverView.swift` | 全屏屏保布局、头部、指标、底部状态和退出提示。 |
 | `Sources/MagpieWatch/TokenFlowView.swift` | 小组件上的 Token 流向光带：缓存 / 输入分行交织，输出反向回流。壁纸和屏保不再用它当主舞台。 |
-| `Sources/MagpieWatch/WallpaperView.swift` | 桌面动态壁纸布局与 `AmbientOrbField` 环境光晕组件。主舞台是 `WallpaperRouteScene`。 |
-| `Sources/MagpieWatch/WallpaperRouteScene.swift` | 多 agent 路由舞台：左侧智能体、中央 Magpie、右侧模型。真实 trace 才沿曲线播包；没有路由时节点等待、链路为虚线。 |
 | `Sources/MagpieWatch/RouteVisuals.swift` | 小组件单路由 Canvas、曲线、粒子、节点和 Reduce Motion 处理。 |
 | `Sources/MagpieWatch/PreferencesView.swift` | 偏好设置 UI。 |
-| `Sources/MagpieWatch/Theme.swift` | 四套 `WatchPalette`、字体、玻璃面板、品牌标记、通用按钮。当前主题经 `\.watchPalette` 传给界面。 |
+| `Sources/MagpieWatch/Theme.swift` | 单一 `WatchPalette.watch`、字体、玻璃面板、品牌标记、通用按钮。 |
 | `Sources/MagpieWatch/Formatting.swift` | 数字缩写、货币、百分比、延迟、日期和账号遮蔽。 |
 | `Sources/MagpieWatch/UsageSparkline.swift` | 今日用量折线图和柱状信号图。 |
 | `Package.swift` | SwiftPM 可执行 target，最低 macOS 14。 |
@@ -274,7 +281,7 @@ GET /v1/magpie/trace?after=0  -> TraceResponse
 | `magpie.screensaver.idleMinutes` | Int | `5` |
 | `magpie.privacy.maskEmails` | Bool | `true` |
 | `magpie.wallpaper.enabled` | Bool | `false` |
-| `magpie.theme` | String | `aurora`（另有 `noir`、`ion`、`ember`） |
+| `magpie.wallpaper.rightInset` | Int | `120` |
 
 新增设置时要同时处理默认值、`didSet` 持久化和 Preferences UI 绑定。修改键名会清空用户现有偏好，应提供迁移逻辑而不是直接改名。
 

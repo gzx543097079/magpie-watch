@@ -32,7 +32,6 @@
 
   let maskOn = true;
   let settleTimer = 0;
-  let previewOn = false;
   let online = true;
   let lastGood = null;
 
@@ -557,7 +556,7 @@
     renderLive(bundle);
     // 顶栏只留时钟，网关状态与快照时间收进页脚，右上角不再堆文字。
     $('source-note').textContent = '数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽 · ' +
-      (previewOn ? '演示数据' : online ? '网关在线' : '网关离线 · 保留上次数据') +
+      (online ? '网关在线' : '网关离线 · 保留上次数据') +
       (bundle.at ? ' · 快照 ' + clockOf(new Date(bundle.at).toISOString()) : '');
     document.body.classList.toggle('offline', !online);
   }
@@ -583,9 +582,8 @@
   }
 
   /* ── Swift 注入入口 ── */
-  window.setMagpieConfig = ({ mask: maskValue = true, preview = false } = {}) => {
+  window.setMagpieConfig = ({ mask: maskValue = true } = {}) => {
     maskOn = maskValue;
-    previewOn = !!preview;
     if (lastGood) paint(lastGood);
   };
 

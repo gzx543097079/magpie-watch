@@ -28,7 +28,7 @@ struct WallpaperWebScene: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.fullscreen = fullscreen
         context.coordinator.rightInset = model.wallpaperRightInset
-        context.coordinator.sendConfig(maskEmails: model.maskEmails, preview: model.wallpaperPreview)
+        context.coordinator.sendConfig(maskEmails: model.maskEmails)
         context.coordinator.sendStatus(online: model.isOnline, updatedAt: model.lastUpdated)
         context.coordinator.sendLayout()
     }
@@ -70,8 +70,8 @@ struct WallpaperWebScene: NSViewRepresentable {
             webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
-        func sendConfig(maskEmails: Bool, preview: Bool) {
-            let json = "{\"mask\":\(maskEmails),\"preview\":\(preview)}"
+        func sendConfig(maskEmails: Bool) {
+            let json = "{\"mask\":\(maskEmails)}"
             guard json != sentConfig else { return }
             sentConfig = json
             guard ready, let webView else { return }

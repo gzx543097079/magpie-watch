@@ -8,15 +8,15 @@ macOS desktop
 
 ## Stack
 
-AppKit manages desktop-level wallpaper windows, the independently draggable pet panel and menu bar. A same-origin local WKWebView page renders the wallpaper as a read-only data board (quotas, today, live route stream, agents); original dsh-whale-musume WebP poses, MIT state core and CSS/WAAPI render the pet. The pet workbench exposes outfits and actions only. Account quotas, cache hit rate, token statistics and recent operation consumption are always on the wallpaper; a separate native detail window expands request attribution. SwiftUI remains for preferences and the optional legacy widget/screen saver. No web hosting or CDN is needed.
+AppKit manages desktop-level wallpaper windows and the menu bar. A same-origin local WKWebView page renders the wallpaper as a read-only data board (quotas, today, live route stream, agents). Account quotas, cache hit rate, token statistics and recent operation consumption are always on the wallpaper; a separate native detail window expands request attribution. SwiftUI remains for preferences and the optional legacy widget/screen saver. No web hosting or CDN is needed.
 
 ## Users
 
-The primary user is a single Mac operator who uses Magpie to route Codex and other AI-agent traffic across multiple providers and accounts. They want the Magpie data modules as a desktop wallpaper — today/week/month usage, quotas, hourly rhythm, rankings and recent calls — plus an independently movable pet with multiple switchable appearances. Token-flow staging is out of scope.
+The primary user is a single Mac operator who uses Magpie to route Codex and other AI-agent traffic across multiple providers and accounts. They want the Magpie data modules as a desktop wallpaper — today/week/month usage, quotas, hourly rhythm, rankings and recent calls. Token-flow staging, a desktop pet and switchable visual themes are out of scope.
 
 ## Product Purpose
 
-Turn local Magpie telemetry into a glanceable desktop wallpaper and a playful companion. Success means the user can read today’s usage and remaining quotas without opening Magpie, drag the pet anywhere, and choose between distinct characters. The operational widget and automatic screen saver remain optional secondary surfaces.
+Turn local Magpie telemetry into a glanceable desktop wallpaper. Success means the user can read today’s usage, live route detail and remaining quotas without opening Magpie. The operational widget and automatic screen saver remain optional secondary surfaces.
 
 ## Positioning
 
@@ -32,16 +32,15 @@ Magpie runs locally at `127.0.0.1:3425`. The app polls its usage, quota, request
 - Provider/account quota windows from `/v1/magpie/quotas`.
 - Recent route and fallback activity from `/v1/magpie/usage/requests` and `/v1/magpie/trace`.
 - Desktop wallpaper presenting quotas, today's spend and cache rate, a live route stream (latency, TTFT, failures, model/folder mix, recent calls) and agent rankings.
-- Wallpaper below desktop icons with mouse passthrough; a separate floating pet panel with persisted position and skin.
+- Wallpaper below desktop icons with mouse passthrough.
 - Menu-bar controls and optional legacy widget/screen-saver mode.
 - Trace polling is discrete (about four seconds); the board shows only what the gateway returned, with no interpolation or invented traffic.
-- Pet artwork is animated with CSS rather than a Live2D rig.
 - A clear offline state when Magpie is unavailable; demo data may be used only as an explicitly labelled preview.
 - No screen recording, OCR, cloud upload, or account credentials are used.
 
 ## Brand Commitments
 
-The wallpaper is a calm instrument panel rather than an animated spectacle: no Three.js scene, no ambient motion. The pet remains playful and draggable with multiple character choices. The existing Magpie identity and local-first nature should remain recognizable; the new visual language may be expressive but must not imply that this is an official Magpie product.
+The wallpaper is a calm instrument panel rather than an animated spectacle: no Three.js scene, no ambient motion. The existing Magpie identity and local-first nature should remain recognizable; the new visual language may be expressive but must not imply that this is an official Magpie product.
 
 ## Evidence on Hand
 

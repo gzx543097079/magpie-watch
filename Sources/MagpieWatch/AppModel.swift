@@ -61,19 +61,6 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(wallpaperRightInset, forKey: Keys.wallpaperRightInset) }
     }
 
-    @Published var isPetEnabled: Bool {
-        didSet { defaults.set(isPetEnabled, forKey: Keys.petEnabled) }
-    }
-
-    @Published var petSkin: PetSkin {
-        didSet { defaults.set(petSkin.rawValue, forKey: "magpie.pet.skin") }
-    }
-    @Published var wallpaperPreview = false
-
-    @Published var theme: WatchThemeID {
-        didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
-    }
-
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -97,8 +84,6 @@ final class AppModel: ObservableObject {
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
         let savedWallpaper = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool
         let savedRightInset = defaults.object(forKey: Keys.wallpaperRightInset) as? Int
-        let savedPet = defaults.object(forKey: Keys.petEnabled) as? Bool
-        let savedTheme = defaults.string(forKey: Keys.theme)
 
         widgetExpanded = savedExpanded ?? true
         isWidgetVisible = savedVisible ?? false
@@ -109,9 +94,6 @@ final class AppModel: ObservableObject {
         maskEmails = savedMaskEmails ?? true
         isWallpaperEnabled = savedWallpaper ?? true
         wallpaperRightInset = savedRightInset ?? 120
-        isPetEnabled = savedPet ?? true
-        theme = WatchThemeID(rawValue: savedTheme ?? "") ?? .aurora
-        petSkin = PetSkin(rawValue: defaults.string(forKey: "magpie.pet.skin") ?? "") ?? .whale
     }
 
     deinit {
@@ -218,27 +200,6 @@ final class AppModel: ObservableObject {
         let input = Double(usage?.input ?? 0)
         guard cache + input > 0 else { return 0 }
         return cache / (cache + input) * 100
-    }
-
-    /// 壁纸和屏保用的多 agent 舞台。小组件仍使用单路由的 `routePresentation`。
-    var wallpaperBoard: WallpaperFlowBoard {
-        WallpaperBoardBuilder.make(
-            usage: usage,
-            trace: isOnline && traceIsFresh ? trace : nil,
-            service: service,
-            isOnline: isOnline
-        )
-    }
-
-    /// 动态壁纸只画此刻有真实请求的智能体和模型。
-    var activeWallpaperBoard: WallpaperFlowBoard {
-        WallpaperBoardBuilder.make(
-            usage: usage,
-            trace: isOnline && traceIsFresh ? trace : nil,
-            service: service,
-            isOnline: isOnline,
-            activeOnly: true
-        )
     }
 
     var routePresentation: RoutePresentation {
@@ -470,6 +431,4 @@ private enum Keys {
     static let maskEmails = "magpie.privacy.maskEmails"
     static let wallpaperEnabled = "magpie.wallpaper.enabled"
     static let wallpaperRightInset = "magpie.wallpaper.rightInset"
-    static let petEnabled = "magpie.wallpaper.petEnabled"
-    static let theme = "magpie.theme"
 }

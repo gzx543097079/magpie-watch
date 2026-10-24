@@ -5,7 +5,7 @@ struct PreferencesView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var palette: WatchPalette { model.theme.palette }
+    private var palette: WatchPalette { .watch }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -16,7 +16,7 @@ struct PreferencesView: View {
                         .font(.custom(WatchTheme.displayCNFont, size: 20).weight(.semibold))
                         .tracking(0.5)
                         .foregroundStyle(palette.ice)
-                    Text("星潮动态壁纸与桌面宠物 · 仅限本机")
+                    Text("桌面数据壁纸与小组件 · 仅限本机")
                         .font(.custom(WatchTheme.displayCNFont, size: 8.5).weight(.medium))
                         .tracking(1.2)
                         .foregroundStyle(palette.mist)
@@ -34,14 +34,6 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     section("动态壁纸") {
                         Toggle("显示动态壁纸（桌面图标下方）", isOn: $model.isWallpaperEnabled)
-                        Toggle("显示可拖动桌宠", isOn: $model.isPetEnabled)
-                        Picker("鲸鱼娘待机装扮", selection: $model.petSkin) {
-                            ForEach(PetSkin.allCases) { skin in
-                                Text(skin.title + " · " + skin.subtitle).tag(skin)
-                            }
-                        }
-                        Text("单击摸头，拖动移动；右键可投喂、换装。工作时自动切换原版工作姿态。")
-                            .font(.system(size: 10)).foregroundStyle(palette.mist)
                         HStack {
                             Text("右侧留白（放文件夹）")
                                 .foregroundStyle(palette.ice.opacity(0.8))
@@ -60,8 +52,6 @@ struct PreferencesView: View {
                         Text("左侧始终让开 Dock。全屏时两边留白都取消，画面顶满左右。")
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
-                        Toggle("预览 Token 流向（演示数据）", isOn: $model.wallpaperPreview)
-                            .disabled(!model.isWallpaperEnabled)
                         Text("壁纸在所有显示器常驻显示实时路由与用量，鼠标事件会直接穿透，不影响正常使用。")
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
@@ -72,8 +62,6 @@ struct PreferencesView: View {
                         Toggle("始终置顶", isOn: $model.isPinned)
                         Toggle("鼠标穿透", isOn: $model.clickThrough)
                     }
-
-                    themeSection
 
                     section("动态屏保") {
                         Toggle("空闲后自动进入屏保", isOn: $model.autoScreensaver)
@@ -118,30 +106,6 @@ struct PreferencesView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .environment(\.watchPalette, palette)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: model.theme)
-    }
-
-    private var themeSection: some View {
-        section("视觉主题") {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10)
-                ],
-                spacing: 10
-            ) {
-                ForEach(WatchThemeID.allCases) { theme in
-                    ThemeChoice(theme: theme, selected: model.theme == theme) {
-                        model.theme = theme
-                    }
-                }
-            }
-            Text("小组件和屏保会换上所选主题，并记住这个选择。动态壁纸使用星潮专属配色。缓存、输入、输出始终分成三种颜色。")
-                .font(.custom(WatchTheme.bodyFont, size: 10))
-                .foregroundStyle(palette.mist)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private var statusPill: some View {
@@ -182,62 +146,4 @@ struct PreferencesView: View {
     }
 }
 
-private struct ThemeChoice: View {
-    let theme: WatchThemeID
-    let selected: Bool
-    let action: () -> Void
 
-    private var palette: WatchPalette { theme.palette }
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Text(theme.title)
-                        .font(.custom(WatchTheme.displayCNFont, size: 13).weight(.semibold))
-                        .foregroundStyle(palette.ice)
-                    Spacer(minLength: 4)
-                    if selected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(palette.seaBright)
-                    }
-                }
-                Text(theme.detail)
-                    .font(.custom(WatchTheme.bodyFont, size: 9))
-                    .foregroundStyle(palette.mist)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 0) {
-                    palette.cache
-                    palette.input
-                    palette.output
-                }
-                .frame(height: 5)
-                .clipShape(Capsule())
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [palette.deep.opacity(0.95), palette.abyss.opacity(0.92)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(
-                        selected ? palette.seaBright.opacity(0.85) : Color.white.opacity(0.08),
-                        lineWidth: selected ? 1.4 : 0.7
-                    )
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(theme.title)，\(theme.detail)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
