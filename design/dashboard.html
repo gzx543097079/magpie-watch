@@ -11,19 +11,20 @@
   <header>
     <div class="brand"><img src="magpie-bird.svg" alt="">MAGPIE<em>数据观测台</em></div>
     <div class="meta">
+      <span class="gw"><i class="led"></i><b id="gw-label">网关在线</b></span>
       <time class="clock" id="clock"></time>
     </div>
   </header>
 
   <main>
     <section class="mod quota-mod c4 r1">
-      <h2>账号额度 <small id="quota-note"></small></h2>
+      <h2><span class="tt">账号额度 <i class="code">ACC.QUOTA</i></span><small id="quota-note"></small></h2>
       <div class="body q-list" id="quota-list"></div>
       <div class="mod-foot"><span id="quota-foot"></span><span id="quota-foot2"></span></div>
     </section>
 
     <section class="mod c8 r1">
-      <h2>今日 <small id="today-note"></small></h2>
+      <h2><span class="tt">今日 <i class="code">TODAY</i></span><small id="today-note"></small></h2>
       <div class="body today-grid">
         <div class="today-main">
           <div class="hero-row">
@@ -50,8 +51,8 @@
       <div class="mod-foot"><span id="today-foot"></span><span id="today-foot2"></span></div>
     </section>
 
-    <section class="mod live-mod c8 r2">
-      <h2>实时数据流 <small id="live-note">最近 60 条路由 · 4 秒刷新</small></h2>
+    <section class="mod live-mod c8 r2" id="live-mod">
+      <h2><span class="tt">实时数据流 <i class="code">LIVE.STREAM</i></span><small id="live-note">最近 60 条路由 · 4 秒刷新</small></h2>
       <div class="body live-body">
         <div class="live-kpi" id="live-kpi"></div>
         <div class="live-chart">
@@ -75,7 +76,7 @@
     </section>
 
     <section class="mod c8 r3">
-      <h2>智能体 <small>成本 · 延迟</small></h2>
+      <h2><span class="tt">智能体 <i class="code">AGENTS</i></span><small>成本 · 延迟</small></h2>
       <div class="body agents-wide" id="agent-list"></div>
       <div class="mod-foot"><span id="agent-foot"></span></div>
     </section>

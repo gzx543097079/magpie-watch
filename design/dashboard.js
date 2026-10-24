@@ -79,6 +79,13 @@
     return node;
   };
 
+  /* 数值变化的辉光短闪：只挂在刚写过的读数上，不闪没变的。 */
+  const flash = (node) => { node.classList.remove('tick'); void node.offsetWidth; node.classList.add('tick'); };
+  const put = (id, text) => {
+    const node = $(id);
+    if (node.textContent !== text) { node.textContent = text; flash(node); }
+  };
+
   /** 复用同 key 的 DOM，避免每轮轮询重建导致闪烁。 */
   function keyed(box, items, keyOf, create, update) {
     const existing = new Map([...box.children].map((node) => [node.dataset.key, node]));
@@ -104,7 +111,7 @@
 
   /* ── 今日 ── */
   function renderToday(today, week, month, daily) {
-    $('cost').textContent = money(today.cost);
+    put('cost', money(today.cost));
     $('today-note').textContent =
       integer(today.calls) + ' 次 · ' + compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0)) + ' tok';
 
@@ -112,7 +119,7 @@
     const hit = today.cache_read || 0;
     const billed = (today.input || 0) + hit;
     const rate = share(hit, billed);
-    $('cache-rate').textContent = billed ? pct(rate) : '—';
+    put('cache-rate', billed ? pct(rate) : '—');
     $('cache-bar').style.width = rate + '%';
     $('cache-sub').textContent = billed
       ? compact(hit) + ' 命中 / ' + compact(billed) + ' 输入'
@@ -122,7 +129,7 @@
     const ds = (today.models || []).filter(isDeepSeek);
     const usd = ds.reduce((s, m) => s + dsUsd(m), 0);
     const freeCalls = ds.reduce((s, m) => s + (m.cost ? 0 : (m.calls || 0)), 0);
-    $('equiv-usd').textContent = ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—';
+    put('equiv-usd', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—');
     $('equiv-note').textContent = ds.length
       ? '按官方价折算 · ' + integer(ds.reduce((s, m) => s + (m.calls || 0), 0)) + ' 次调用' +
         (freeCalls ? '（' + integer(freeCalls) + ' 次实记免费）' : '') : '今日未走 DeepSeek';
@@ -221,7 +228,7 @@
       (node, g) => {
         if (g.idle) {
           // 无窗口账号合成一行：一句总数 + 悬停看全名单。
-          const names = g.idle.map((x) => x.q.name || x.q.provider);
+          const names = g.idle.map((x) => mask(x.q.name || x.q.provider));
           const tally = new Map();
           names.forEach((n) => tally.set(n, (tally.get(n) || 0) + 1));
           node.className = 'q-idle';
@@ -234,11 +241,11 @@
 
         const head = node.querySelector('h3');
         const name = g.q.name || g.q.provider;
-        head.children[0].textContent = name;
+        head.children[0].textContent = mask(name);
         // plan 里常常已经写着账号名（如「ZCODE START PLAN」），重复就不再排一遍。
         const plan = g.q.plan && !String(g.q.plan).toUpperCase().includes(String(name).toUpperCase())
           && !String(name).toUpperCase().includes(String(g.q.plan).toUpperCase()) ? g.q.plan : '';
-        head.children[1].textContent = plan;
+        head.children[1].textContent = plan ? mask(plan) : '';
         // 在岗标记放在账号行尾，不占窗口行的位置。
         head.children[2].textContent = g.q.last ? '在岗' : g.wins.length + ' 窗口';
         head.children[2].classList.toggle('on', !!g.q.last);
@@ -262,6 +269,11 @@
             name.textContent = w.name || '额度';
             const low = typeof w.remaining === 'number' && w.remaining <= 20;
             row.classList.toggle('low', low);
+            row.classList.toggle('out', typeof w.remaining === 'number' && w.remaining <= 0);
+            // 临近重置走琥珀通道：与 resetText 的「N 分钟后重置」同一档。
+            const resetAt = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
+            const minsToReset = resetAt != null ? Math.round((resetAt - Date.now()) / 60000) : null;
+            row.classList.toggle('soon', minsToReset != null && minsToReset >= 0 && minsToReset < 90);
             value.textContent =
               w.remaining <= 0 ? '用尽' : (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—'));
             bar.style.width = share(w.remaining || 0, 100) + '%';
@@ -287,6 +299,8 @@
     const noWin = groups.filter((g) => !g.wins.length).length;
     $('quota-note').textContent = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 按余量升序';
     $('quota-foot').textContent = nearest ? '最近重置 · ' + resetText(nearest.resetsAt) : '';
+    $('quota-foot').classList.toggle('soon',
+      !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
     $('quota-foot2').textContent = noWin ? '另有 ' + noWin + ' 个账号未上报窗口' : '全部账号均已上报窗口';
   }
 
@@ -305,7 +319,7 @@
     keyed($('agent-list'), agents, (a) => a.id || a.name,
       () => { const row = el('div', 'a'); row.append(el('b'), el('em'), el('span')); return row; },
       (node, a) => {
-        node.children[0].textContent = a.name || a.id;
+        node.children[0].textContent = mask(a.name || a.id);
         node.children[1].textContent = money(a.cost);
         const bits = [integer(a.calls) + ' 次'];
         if (a.timed) bits.push((a.ttft_ms / a.timed / 1000).toFixed(1) + 's 首字');
@@ -326,6 +340,18 @@
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   };
   const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
+
+  /* 签名动作：新路由落表时 STREAM 机柜四角亮一下。首轮不闪，之后每来一条闪一次。 */
+  let lastRouteKey = null;
+  let blipTimer = 0;
+  function blipStream() {
+    const mod = $('live-mod');
+    mod.classList.remove('blip');
+    void mod.offsetWidth;
+    mod.classList.add('blip');
+    clearTimeout(blipTimer);
+    blipTimer = setTimeout(() => mod.classList.remove('blip'), 900);
+  }
 
   // 失败原因沿用网关的 fail 标记，画面上只留一行中文。
   const FAIL = { quota: '额度用尽', timeout: '超时', rate: '限流', auth: '鉴权失败',
@@ -410,7 +436,8 @@
     keyed($('live-kpi'), kpis, (d) => d.k,
       () => { const d = el('div'); d.append(el('b'), el('span')); return d; },
       (node, d) => {
-        node.children[0].textContent = d.v;
+        const b = node.children[0];
+        if (b.textContent !== d.v) { b.textContent = d.v; flash(b); }
         node.children[1].textContent = d.k + ' · ' + d.note;
         node.classList.toggle('bad', d.bad);
       });
@@ -457,14 +484,15 @@
     const latest = rows.slice(-fits).reverse();
     keyed(box, latest, (r) => r.id,
       () => {
-        const row = el('div', 'lt-row');
+        // fresh 只在节点新建（= 新路由首次进表）时挂上，扫光播一次。
+        const row = el('div', 'lt-row fresh');
         ['t', 'ag', 'md', 'ms', 'tt', 'out'].forEach((c) => row.append(el('span', c)));
         return row;
       },
       (node, r) => {
         const [t, ag, md, ms, tt, out] = node.children;
         t.textContent = r.label;
-        ag.textContent = r.agent;
+        ag.textContent = mask(r.agent);
         ag.title = r.folder;
         md.textContent = r.model;
         md.title = r.provider + (r.tries > 1 ? ' · ' + r.tries + ' 次尝试' : '');
@@ -476,8 +504,17 @@
         tt.textContent = r.done ? secs(r.ttft) : '—';
         out.textContent = r.done ? compact(r.out) : '—';
         node.classList.toggle('bad', r.bad);
+        node.classList.toggle('wip', !r.done);
         if (r.bad) md.title = r.why + (r.tries > 1 ? ' · ' + r.tries + ' 次尝试' : '');
       });
+
+    /* 新路由落表 + 失败亮红：角标的颜色说的都是真状态。 */
+    const newestKey = rows.length ? rows[rows.length - 1].id : null;
+    if (newestKey && newestKey !== lastRouteKey) {
+      if (lastRouteKey) blipStream();
+      lastRouteKey = newestKey;
+    }
+    $('live-mod').classList.toggle('alert', bad.length > 0);
 
     /* 注脚 */
     const newest = rows.length ? Math.max(...rows.map((r) => r.at)) : null;
@@ -511,6 +548,16 @@
     const barW = Math.max(1, Math.min(9, step - 1.6));
     const yOf = (ms) => H - pad - (ms / maxMs) * (H - pad * 2);
 
+    // 示波器刻度：三条极淡的横线，说明这里是仪表而不是画布。
+    ctx.strokeStyle = 'rgba(70, 120, 170, 0.14)';
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach((f) => {
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(pad + (H - pad * 2) * f) + 0.5);
+      ctx.lineTo(W, Math.round(pad + (H - pad * 2) * f) + 0.5);
+      ctx.stroke();
+    });
+
     // 基线：一条极淡的底边，说明这里是 0。
     ctx.strokeStyle = 'rgba(39, 64, 90, 0.9)';
     ctx.beginPath();
@@ -527,8 +574,11 @@
       else if (!r.done) { g.addColorStop(0, '#eaf4ff'); g.addColorStop(1, 'rgba(111,242,255,0.22)'); }
       else { g.addColorStop(0, '#6ff2ff'); g.addColorStop(1, 'rgba(47,127,214,0.18)'); }
       ctx.fillStyle = g;
+      ctx.shadowColor = r.bad ? 'rgba(255, 122, 122, 0.65)' : 'rgba(111, 242, 255, 0.55)';
+      ctx.shadowBlur = 5;
       ctx.fillRect(x, y, barW, H - pad - y);
       // 顶端一点亮，让每根条的读数一眼可见。
+      ctx.shadowBlur = 0;
       ctx.fillStyle = r.bad ? '#ffd0d0' : 'rgba(234, 250, 255, 0.95)';
       ctx.fillRect(x, y, barW, 1.4);
     });
@@ -554,7 +604,8 @@
     renderQuotas(quotas);
     renderAgents(today);
     renderLive(bundle);
-    // 顶栏只留时钟，网关状态与快照时间收进页脚，右上角不再堆文字。
+    // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
+    $('gw-label').textContent = online ? '网关在线' : '网关离线';
     $('source-note').textContent = '数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽 · ' +
       (online ? '网关在线' : '网关离线 · 保留上次数据') +
       (bundle.at ? ' · 快照 ' + clockOf(new Date(bundle.at).toISOString()) : '');

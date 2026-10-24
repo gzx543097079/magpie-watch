@@ -1,33 +1,162 @@
-# 巡检站 / Station Course
+---
+name: MagpieWatch 数据观测台
+description: 本地 Magpie 网关的桌面壁纸数据中心（NOC）视觉系统
+colors:
+  ground: "#020912"
+  ink: "#f2f9ff"
+  muted: "#b9cde3"
+  dim: "#7e95ad"
+  dim2: "#63829f"
+  live: "#6ff2ff"
+  mark: "#4aa3ff"
+  mark-soft: "#2f7fd6"
+  void: "#ff7a7a"
+  amber: "#ffbc7d"
+  hairline: "rgba(96, 158, 220, 0.22)"
+  hair-faint: "rgba(70, 120, 170, 0.16)"
+typography:
+  display:
+    fontFamily: "ui-monospace, 'SF Mono', Menlo, Monaco, monospace"
+    fontSize: "45px"
+    fontWeight: 600
+    lineHeight: 0.9
+    letterSpacing: "-0.03em"
+  kpi:
+    fontFamily: "ui-monospace, 'SF Mono', Menlo, Monaco, monospace"
+    fontSize: "21px"
+    fontWeight: 600
+    lineHeight: 1.05
+    letterSpacing: "-0.02em"
+  body:
+    fontFamily: "'Avenir Next', 'PingFang SC', -apple-system, sans-serif"
+    fontSize: "10.5px"
+    fontWeight: 400
+    lineHeight: 1.4
+    letterSpacing: "0.04em"
+  label:
+    fontFamily: "'Avenir Next', 'PingFang SC', -apple-system, sans-serif"
+    fontSize: "10px"
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: "0.16em"
+  mono-code:
+    fontFamily: "ui-monospace, 'SF Mono', Menlo, Monaco, monospace"
+    fontSize: "8.5px"
+    fontWeight: 400
+    letterSpacing: "0.14em"
+rounded:
+  cabinet: "2px"
+  led: "50%"
+spacing:
+  mod-pad: "9px 16px 11px"
+  column-gap: "26px"
+  row-gap: "18px"
+  inner-gap: "11px 30px"
+components:
+  cabinet:
+    backgroundColor: "rgba(9, 24, 44, 0.42)"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.cabinet}"
+  track-bar:
+    backgroundColor: "rgba(30, 60, 95, 0.55)"
+    textColor: "{colors.mark}"
+    height: "3px"
+---
 
-## Intent
+# Design System: MagpieWatch 数据观测台
 
-Magpie 的数据模块作为桌面壁纸：信息尽可能密，但排布必须稳。不是卡片墙。第二行整行留给「多节点往返」舞台——它不是装饰性的流向动画，每一次往返都对应一条此刻正在进行的真实调用（trace 里 `done === false` 的路由）。没有在途调用时舞台不拿历史数据凑画面，只让网关做待机呼吸。
+## Overview
 
-## Composition
+**Creative North Star: 「自家机房的大屏」——本地网关的数据中心指挥舱（NOC）**
 
-- Native desktop wallpaper behind icons, full mouse passthrough, one window per display.
-- Left Dock inset via `--dock-left` from `NSScreen.visibleFrame`, a right column reserved for the user's folder stack via `--dock-right` (Preferences, 0–260 pt, default 120), and `--dock-bottom`. Fullscreen / screensaver clears all three, so the board fills both edges.
-- Two columns on one screen: the left third is every account quota window, full height, one window per row, grouped by account with generous air between groups; accounts that report no window collapse into a single trailing line instead of one row each; the right two thirds stack three bands — today / the live data stream / agents.
-- Avenir Next / PingFang SC. Navy ground `#020912`. Sequential mark `#3987e5` (validated dark slot 1). Quota identity stays on that one hue; `#d95926` and `#199e70` appear only where a second or third category is genuinely needed. Live `#68ebff` marks the current account only. Exhausted quota `#e66767`.
-- No cards, no Three.js, no ambient animation. The live panel is read, not watched: values update in place every 4 s, and the only motion is a single fade on a row that just arrived.
+壁纸是一座正在运转的数据中心：每块面板是一台机柜的仪表屏，深空海军地面铺着极淡的蓝图网格，四角带青色角标的 HUD 机柜框里是等宽数字读数。光只表达真实状态——在途、失败、余量将尽、重置临近、离线——从不为装饰而亮。所有数字来自本机网关的原始 JSON，4 秒原位改写，无闪烁无布局位移。
 
-## Motion and truth
+**Key Characteristics:**
+- 机柜 = 1px 发丝框 + 四角青色角标 + 呼吸 LED 标题行 + mono 模块代号
+- 读数一律等宽字体，中文标签用 Avenir Next / PingFang SC
+- 动效一次编排：一条 30s 扫描微光做环境，其余光全是数据事件（新路由扫光、数值闪辉、在途呼吸、耗尽闪烁）
+- 离线时机柜角标转红、画面压暗、扫描暂停——降级也是状态
 
-Polling rewrites values in place against stable DOM keys, so nothing flickers and no layout shifts. Exhausted quotas keep their row and colour only the number. Reduce Motion disables transitions entirely. Demo data is labelled 演示数据. Unknown values stay 「—」. Emails stay masked in this ambient view, and are masked again after each fetch.
+## Colors
 
-The page polls `127.0.0.1:3425` itself, once every 4 s (refresh then sleep), through Watch’s loopback-only same-origin server: it serves the static page and reverse-proxies `/v1/magpie/*`, so no CORS and no field projection in Swift. Magpie’s own cadence is not claimed. A failed round keeps the last good frame and only marks the status stale; it never blanks the desktop.
+冷色单相：蓝青为体，红与琥珀只作状态信号。
 
-## Data panels
+### Primary
+- **实时青 Live Cyan** (#6ff2ff): 在途、最新、当前；LED、英雄数字辉光、新路由扫光、实时模块角标。
+- **顺序蓝 Mark Blue** (#4aa3ff / #2f7fd6): 额度与分布条的顺序读数，账号圆点。
 
-Wallpaper shows four modules on one 1920×1080 screen — every account quota window in the left third with reset countdown and hold records; today’s spend with cache hit rate, DeepSeek equivalent value, full flow and three most recent hours in a two-column body; the live data-stream panel (KPI strip, duration chart, two distributions, route table); agents with latency. Density is held by one 12-column grid, one type scale (9/10/11.5/12/12.5/16/46), and one spacing set; hierarchy comes from size and weight, never from colour or boxes. Row heights are proportional, so other displays do not overflow. Stations show today / week / month token totals, input / output / cache, calls / errors / retries / sessions, TTFT and decode rate, hourly request columns, and agent ranks — plus the live route stream. A subscription percentage is not a currency balance. Unknown values remain unknown; stale snapshots are marked. Context attribution is labelled separately and never added to billed usage.
+### Secondary
+- **失败红 Void** (#ff7a7a): 失败路由、低余量（≤20%）、用尽（0）、离线；永远伴随闪烁或常亮辉光，不作它用。
+- **临近琥珀 Amber** (#ffbc7d): 重置 <90 分钟的窗口与「最近重置」页脚；比红缓一级的预警。
 
-The live data stream replaces the animated round trip. It is a data-centre panel, not a decoration: a KPI strip (in flight, median duration, median TTFT, output tokens, failures), a per-route duration column chart drawn from the last 60 real routes with a dashed median line and failures in red, a model distribution and a folder distribution ranked by calls and output, and a route table of time / agent / model / duration / TTFT / output. Every mark comes from the trace; nothing is interpolated or replayed, and the table is the same numbers as the chart so the two can be checked against each other. In-flight routes draw their elapsed time with an ellipsis; the median line is the only horizontal rule in the panel.
+### Neutral
+- **深空地 Ground** (#020912): 壁纸地面，网格与光晕都铺在其上。
+- **面板墨 Ink** (#f2f9ff): 主读数白，带青辉。
+- **次级 Muted / Dim / Dim2** (#b9cde3 / #7e95ad / #63829f): 标签、副读数、页脚，三级递暗。
+- **发丝线 Hairline** (rgba(96,158,220,0.22) / rgba(70,120,170,0.16)): 机柜框与内部隔线。
 
-Failure is stated, not implied. A route with a non-200 status or a `fail` on any attempt renders red in the chart, the model bar and the table row, the failure KPI names the reason (额度用尽 / 超时 / 限流 …), and the module footer repeats the count. The upstream English error stays in the row's tooltip.
+### Named Rules
+**状态光规则。** 每一处光都必须能回答「它代表什么数据状态」；回答不了的辉光删掉。
+**红色最急规则。** 红 > 琥珀 > 青：余量用尽的窗口即使临近重置也保持红色，CSS 里红色规则永远写在琥珀之后。
 
-The workbench combines request ledger entries with trace by route ID. Prefer ledger accounting; never add trace counts again. Reasoning is included in output. Decode prompt.parts and item labels only, without retaining request body text. Tool definitions do not prove tool execution. Preserve selection and disclosure state across polling.
+## Typography
 
-## Verification
+**Display/KPI:** ui-monospace（SF Mono）——所有数字读数
+**Body/Label:** Avenir Next / PingFang SC——中文标签与说明
+**模块代号:** mono 8.5px 全大写加宽字距（ACC.QUOTA / TODAY / LIVE.STREAM / AGENTS）
 
-Native packaged app renders the wallpaper. Swift tests cover consumption accounting and quota percent vs money. Chart marks use validated dark slot `#3987e5,#d95926,#199e70` on `#020912`. Dock inset and fullscreen zero-inset are layout variables, not decorations.
+**Character:** 仪表而非文章——数字是主语，mono 保证逐位对齐与仪器感；中文只做标签，不与数字争字号。
+
+### Hierarchy
+- **Display** (mono 600, 45px): 今日支出英雄数字，三重青辉。
+- **KPI** (mono 600, 21–24px): 实时条读数、缓存命中率、DeepSeek 等价。
+- **Title** (mono 500, 17px): 今日四小格。
+- **Body** (mono 500, 10–12px): 路由表、额度百分比、小时读数。
+- **Label** (sans 600, 10px, 0.16em): 模块标题；副注 9–9.5px。
+
+## Layout
+
+12 列网格，行高 26fr / 55fr / 19fr。左 4 列账号额度机柜整列（`grid-row: 1 / -1`），右 8 列三段：今日 / 实时数据流 / 智能体。桌面态左侧让开 Dock（`--dock-left`）、右侧让开文件夹列（`--dock-right`）、底部让开（`--dock-bottom`），全屏时三者归零顶满两边。实时数据流内部：KPI 通栏，耗时示波器跨两行，模型/项目分布贴右，路由明细表通栏。
+
+## Elevation & Depth
+
+无投影。深度来自三层叠加：蓝图网格地面 → 半透明机柜底（rgba(9,24,44,0.42)）→ 辉光读数。一条 30s 循环的横向扫描微光（rgba(111,242,255,0.03–0.065)，22vh 高）以 transform 扫过整屏，是唯一的常驻环境动画；示波器刻度线与虚线中位线提供仪表纵深感。
+
+## Shapes
+
+直角为体：机柜只有 2px 微圆角，唯一圆形是状态 LED（7px / 4px 圆点）。角标是 9×1px 的 L 形高光，叠在机柜四角上，颜色由 `--tick-c` 驱动（常态青、blip 提亮、alert/离线转红）。进度条 2–4px 高、无圆角、顶端一段 34px 流光（只挂额度条）。
+
+## Components
+
+### 机柜 Cabinet
+- **形状:** 1px 发丝框（2px 圆角）+ 四角 L 形角标 + 顶缘 4.5% 青光
+- **底色:** rgba(9,24,44,0.42)，上浅下深渐变
+- **标题行:** 3×9px LED 条（呼吸停用，状态驱动）+ 中文标题 + mono 代号 + 右侧实时副注
+- **页脚:** 发丝线上方一行 9.5px 读数（失败红 / 临近琥珀）
+
+### 读数条 Track
+- **轨道:** 2–4px，rgba(30,60,95,0.55)
+- **填充:** 蓝渐变（#2f7fd6→#4aa3ff）+ 7px 外辉；低余量转红渐变；用尽转暗红并停流光
+- **状态:** `.soon` 琥珀读数、`.low` 红读数+2.2s 闪烁、`.out` 1.1s 快闪
+
+### 路由表 Route Table
+- **形状:** mono 9.5px，7 列网格（62px 时间 + 智能体/模型弹性 + 右对齐读数），列距 10px
+- **状态:** 在途行耗时格 1.6s 呼吸；新行 `.fresh` 一道 34% 宽青光 0.95s 扫过；失败行读数红辉
+
+### KPI 条
+- **形状:** 上下发丝线夹一行，竖线分格，mono 21px 白字青辉
+- **状态:** 失败格整体转红；数值变化时 0.9s 辉光短闪（`.tick`）
+
+## Do's and Don'ts
+
+### Do:
+- **Do** 让每一处光对应一个真实数据状态（在途/失败/低余量/临近重置/离线）。
+- **Do** 用 mono 排一切数字，sans 排一切中文标签。
+- **Do** 轮询原位改写 DOM（keyed 复用），未知值保持「—」。
+- **Do** 尊重 Reduce Motion：`prefers-reduced-motion` 下停掉全部动画与过渡，静态结构保留。
+
+### Don't:
+- **Don't** 用 Three.js/WebGL 场景或粒子海洋——这是仪表墙，不是风景。
+- **Don't** 发明流量或演示数据；没有在途调用就显示网关待机，不拿历史凑画面。
+- **Don't** 在被动视图展示未遮蔽的邮箱——所有渲染字符串经 `mask()`。
+- **Don't** 给与数据无关的元素加常驻动画；环境动画只有扫描微光与额度条流光。
