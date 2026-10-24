@@ -428,6 +428,29 @@
     $('agent-foot').textContent = integer(today.calls) + ' 次 · ' + money(today.cost);
   }
 
+  /* ── 最近调用：请求账本（usage/requests）的明细带，两行最新真实调用 ── */
+  function renderCalls(requests) {
+    const rows = ((requests && requests.rows) || []).slice(0, 2);
+    keyed($('calls-rows'), rows, (r) => r.t + '|' + (r.session || '') + '|' + (r.model || ''),
+      () => {
+        const row = el('div', 'c-row fresh');
+        ['t', 'ag', 'md', 'out', 'ms', 'cost'].forEach((c) => row.append(el('span', c)));
+        return row;
+      },
+      (node, r) => {
+        const [t, ag, md, out, ms, cost] = node.children;
+        t.textContent = clockOf(r.t);
+        ag.textContent = mask(r.agentName || r.agent);
+        md.textContent = r.served || r.model;
+        out.replaceChildren(el('b', null, compact(r.out)), document.createTextNode(' out'));
+        ms.textContent = r.ms ? (r.ms / 1000).toFixed(1) + 's' : '—';
+        cost.textContent = r.priced ? money(r.cost) : '未计价';
+        node.classList.toggle('bad', !!r.status);
+        if (r.status) md.title = 'HTTP ' + r.status;
+      });
+    if (!rows.length) $('calls-rows').replaceChildren(el('div', 'empty', '等待请求账本'));
+  }
+
   /* ── 链路共享读数：trace 路由整理与统计 ── */
   const median = (list) => {
     if (!list.length) return null;
@@ -1398,10 +1421,11 @@
 
   /* ── 主循环 ── */
   function paint(bundle) {
-    const { today, week, month, quotas, history } = bundle;
+    const { today, week, month, quotas, history, requests } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas, history);
     renderAgents(today, readLive(bundle.trace));
+    renderCalls(requests);
     renderRouteStage(bundle);
     // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
@@ -1413,17 +1437,19 @@
 
   async function refresh() {
     try {
-      const [today, week, month, quotas, trace, history] = await Promise.all([
+      const [today, week, month, quotas, trace, history, requests] = await Promise.all([
         get('/v1/magpie/usage?period=today'),
         get('/v1/magpie/usage?period=7d'),
         get('/v1/magpie/usage?period=30d'),
         get('/v1/magpie/quotas'),
         get('/v1/magpie/trace'),
         // 燃尽曲线数据：单独容错——拿不到只是少画一条线，不算离线。
-        get('/v1/magpie/quotas/history').catch(() => null)
+        get('/v1/magpie/quotas/history').catch(() => null),
+        // 请求账本：单独容错——拿不到只少两行明细。
+        get('/v1/magpie/usage/requests?period=today&limit=6').catch(() => null)
       ]);
       online = true;
-      lastGood = { today, week, month, quotas, trace, history, at: Date.now() };
+      lastGood = { today, week, month, quotas, trace, history, requests, at: Date.now() };
       paint(lastGood);
     } catch (error) {
       online = false;

@@ -184,8 +184,8 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体）。 */
-  grid-template-rows: minmax(0, 24fr) minmax(0, 60fr) minmax(0, 16fr);
+  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体+最近调用）。 */
+  grid-template-rows: minmax(0, 24fr) minmax(0, 57fr) minmax(0, 19fr);
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -563,6 +563,37 @@ main {
 /* 调用占比：名字下一条细轨，宽度 = 该智能体调用数 / 最活跃智能体 */
 .a .share { grid-column: 1 / -1; height: 2px; background: rgba(30, 60, 95, 0.5); margin-top: 2px; }
 .a .share i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); box-shadow: 0 0 5px rgba(74, 163, 255, 0.4); }
+
+/* 最近调用：智能体模块底部的请求账本明细带，一行一条真实调用 */
+.calls { flex: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--hair); }
+.calls-t {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+.calls-t em { font-style: normal; color: var(--dim2); letter-spacing: 0.03em; }
+.c-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 0.7fr) minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.c-row > span { overflow: hidden; text-overflow: ellipsis; }
+.c-row .t { color: var(--dim); }
+.c-row .md { color: var(--ink); }
+.c-row b { color: var(--ink); font-weight: 500; }
+.c-row span:nth-child(n+4) { text-align: right; }
+.c-row.bad .md, .c-row.bad b { color: var(--void); }
+.c-row.fresh { animation: rowIn 0.6s ease-out; }
+@keyframes rowIn { from { background: rgba(111, 242, 255, 0.14); } to { background: transparent; } }
 
 /* 实时链路：智能体 → 网关 → 模型的快照回放舞台，右栏的主视觉；网关待机呼吸由画布绘制 */
 .route-body { position: relative; }
