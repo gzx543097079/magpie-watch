@@ -6,7 +6,18 @@
 
 本文档面向后续开发者，记录当前实现边界、关键决策、接口约定、验证方法和建议的下一步。产品目标与设计原则见 [PRODUCT.md](PRODUCT.md)，用户安装说明见 [README.md](README.md)。
 
-## 2026-10-24：移除桌宠、视觉主题与「预览 Token 流向」（当前）
+## 2026-10-24：壁纸改为数据中心 NOC 风（当前）
+
+- 视觉世界替换：巡检站的「平静报表」语言换成数据中心指挥舱（NOC）。深空海军地 `#020912` + 蓝图双层网格（36px/180px）+ 30s 循环横向扫描微光；每模块一个 HUD 机柜（1px 发丝框 + 四角青色角标 `--tick-c` + LED 标题行 + mono 模块代号 ACC.QUOTA / TODAY / LIVE.STREAM / AGENTS）。所有数字读数改等宽字体（ui-monospace）。
+- 光只表达真实状态：新路由落表时该行 0.95s 窄青光扫过、STREAM 机柜角标 blip 提亮；有失败时 STREAM 的 LED、角标、失败 KPI、模型分布条全部转红；余量 ≤20% 红色慢闪、用尽快闪、重置 <90 分钟琥珀（红优先）；数值变化时读数辉光短闪（`.tick`）；在途路由耗时格 1.6s 呼吸；离线时全板角标转红、画面压暗、扫描暂停。
+- 常驻动画收紧到两类：扫描微光（body::after，transform 合成）与额度条流光（`.q .track i::after`）。头部/模块 LED 一律常亮不呼吸（响应审查发现的 pulsing-dot error）。`prefers-reduced-motion` 仍然一刀切停所有动画。
+- 实时数据流模块重排：KPI 通栏 → 耗时示波器跨两行（新增三条淡刻度线 + canvas 辉光）→ 模型/项目分布贴右列 → 路由明细表通栏（能多显示几行）。
+- 布局节奏微调：列间距 40→26px、新增行距 18px、机柜内边距 9/16/11px、`--dim2` 提亮到 `#63829f`（对比度 ≥4.5:1）。
+- 顺带修复一个存量隐患：`mask()` 之前从未被调用，「邮箱已遮蔽」是空承诺；现在额度账号名 / plan / 无窗口账号名单 / 路由智能体名 / 智能体排行名渲染时都过 `mask()`。
+- 设计文档：DESIGN.md 按 built world 重写（数据中心 NOC），新增 `.impeccable/design.json` sidecar；PRODUCT.md 品牌承诺改为「NOC 大屏、光=状态」；surface brief（`.impeccable/surfaces/design-dashboard-html.md`）写入新方向契约。验证截图：`.impeccable/review/desktop.png` 与 `desktop-fullscreen.png`（1920×1080 实数据）。
+- 本轮验证：独立 finish review（fix → 三项修复 → 回验）；`detect` 无 error；swift build / test / build-app.sh 通过。
+
+## 2026-10-24：移除桌宠、视觉主题与「预览 Token 流向」
 
 - 桌宠整块删除：`PetWindowController`、`PetDetailWindowController`、`PetSkin`、`PetActivityTracker`、`design/pet.*`、`Resources/Pets/`（含 WhaleMusume 与许可）、菜单栏「桌宠」子菜单、偏好设置里的开关与装扮选择、`--pet-details` 与 `--wallpaper-demo` 启动参数。`Tests/MagpieWatchTests/PetActivityTests.swift` 与 `Tests/Web/pet-regression.mjs` 一并删除。
 - 视觉主题删除：`WatchThemeID` 与四套配色收敛成单一 `WatchPalette.watch`（沿用原「极光暮色」值）。菜单栏「视觉主题」子菜单、偏好设置色板、`magpie.theme` 键、各视图里 `model.theme` 的 `.environment`/`.animation` 全部去掉。

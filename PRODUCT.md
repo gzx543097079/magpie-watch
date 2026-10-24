@@ -40,7 +40,7 @@ Magpie runs locally at `127.0.0.1:3425`. The app polls its usage, quota, request
 
 ## Brand Commitments
 
-The wallpaper is a calm instrument panel rather than an animated spectacle: no Three.js scene, no ambient motion. The existing Magpie identity and local-first nature should remain recognizable; the new visual language may be expressive but must not imply that this is an official Magpie product.
+The wallpaper is a local data-center operations wall (NOC): dense instrument cabinets on a blueprint-grid ground, expressive light, but every glowing element must answer to a real data state — in flight, failed, low, near reset, offline. Ambient motion is limited to one slow scan sheen and quota-bar glints; no Three.js scene, no particle seas, no invented traffic. The existing Magpie identity and local-first nature should remain recognizable; the visual language may be expressive but must not imply that this is an official Magpie product.
 
 ## Evidence on Hand
 
@@ -50,7 +50,7 @@ Live local API responses were verified on 2026-10-22, including usage, quota, re
 
 1. Show real local truth, never invent live activity.
 2. Make routing legible as motion: source, gateway, candidates, selected destination.
-3. Keep passive information calm, compact, and glanceable.
+3. Keep the board dense and glanceable; expressiveness comes from light on real state, never from invented motion.
 4. Degrade honestly and recover automatically when Magpie reconnects.
 5. Respect privacy by masking account identifiers in ambient views.
 
