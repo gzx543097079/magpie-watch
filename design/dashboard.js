@@ -51,6 +51,18 @@
       : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm;
   };
 
+  /** 重置倒计时短版：给用尽账号的大数字用（37 分钟 / 2.5 小时 / 3 天）。 */
+  const resetShort = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    const mins = (d - Date.now()) / 60000;
+    if (mins < 0) return '待刷新';
+    if (mins < 60) return Math.max(1, Math.round(mins)) + ' 分钟';
+    if (mins < 2880) return (mins / 60).toFixed(1) + ' 小时';
+    return Math.round(mins / 1440) + ' 天';
+  };
+
   const resetText = (iso) => {
     if (!iso) return '无重置';
     const d = new Date(iso);
@@ -290,11 +302,16 @@
         // 燃料计取最紧窗口；其余窗口折进小字行。
         const lead = g.wins[0];
         bar.style.width = share(lead.remaining || 0, 100) + '%';
-        main.children[0].textContent = winName(lead.name) || '额度';
-        main.children[1].textContent = lead.remaining <= 0
-          ? '0%'
-          : (typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—'));
-        main.children[2].textContent = resetText(lead.resetsAt);
+        if (st >= 3) {
+          // 已用尽：状态词说了「用尽」，大数字回答下一个问题——多久恢复。
+          main.children[0].textContent = '重置倒计时';
+          main.children[1].textContent = resetShort(lead.resetsAt);
+          main.children[2].textContent = lead.resetsAt ? clockOf(lead.resetsAt) + ' 恢复' : '';
+        } else {
+          main.children[0].textContent = winName(lead.name) || '额度';
+          main.children[1].textContent = typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—');
+          main.children[2].textContent = resetText(lead.resetsAt);
+        }
 
         // 估算燃尽：history 里点位最多的窗口线。
         const rec = ((history && history.data) || []).find((h) => h.provider === g.q.provider && h.user === g.q.user);
