@@ -258,8 +258,10 @@ final class ScreensaverWindowController {
                 defer: false,
                 screen: screen
             )
-            window.isOpaque = true
-            window.backgroundColor = NSColor(red: 0.018, green: 0.07, blue: 0.09, alpha: 1)
+            // 透明底 + 淡入：全屏不是「刷」地盖上来，而是从桌面里浮出来。
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.alphaValue = 0
             window.level = .screenSaver
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             window.ignoresMouseEvents = false
@@ -267,11 +269,19 @@ final class ScreensaverWindowController {
             window.isReleasedWhenClosed = false
             window.acceptsMouseMovedEvents = true
             window.contentViewController = NSHostingController(
-                rootView: ScreensaverView(model: model, onDismiss: onDismiss)
+                rootView: WallpaperWebScene(model: model, fullscreen: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             )
             window.setFrame(screen.frame, display: true)
             window.orderFrontRegardless()
             windows.append(window)
+        }
+
+        // 画面先淡入到不透明，内容再自己从两侧展开（页面里的 dock 归零过渡）。
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.55
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            windows.forEach { $0.animator().alphaValue = 1 }
         }
 
         NSApp.activate(ignoringOtherApps: true)
@@ -332,9 +342,18 @@ final class ScreensaverWindowController {
             NSEvent.removeMonitor(mouseMoveMonitor)
             self.mouseMoveMonitor = nil
         }
-        windows.forEach { $0.orderOut(nil) }
+        // 退出同样淡出，不做硬切；窗口在动画结束后才真正收起。
+        let closing = windows
         windows.removeAll()
         lastMouseLocation = nil
         isDismissing = false
+        guard !closing.isEmpty else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.4
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            closing.forEach { $0.animator().alphaValue = 0 }
+        }, completionHandler: {
+            closing.forEach { $0.orderOut(nil) }
+        })
     }
 }

@@ -14,6 +14,10 @@ let package = Package(
         .executableTarget(
             name: "MagpieWatch",
             path: "Sources/MagpieWatch"
+        ),
+        .testTarget(
+            name: "MagpieWatchTests",
+            dependencies: ["MagpieWatch"]
         )
     ],
     swiftLanguageModes: [.v5]

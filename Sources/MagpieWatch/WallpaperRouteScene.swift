@@ -551,10 +551,16 @@ enum WallpaperBoardBuilder {
         trace: TraceResponse?,
         service: ServiceInfo?,
         isOnline: Bool,
+        activeOnly: Bool = false,
         now: Date = Date()
     ) -> WallpaperFlowBoard {
         var agentDrafts: [String: DraftAgent] = [:]
+        // activeOnly：只保留此刻有真实路由的智能体和模型，未激活节点不进入画面。
+        var agentCalls: [String: Int] = [:]
         for agent in usage?.agents ?? [] {
+            agentCalls[key(agent.id ?? agent.name)] = agent.calls ?? 0
+        }
+        for agent in activeOnly ? [] : usage?.agents ?? [] {
             let id = key(agent.id ?? agent.name)
             guard !id.isEmpty else { continue }
             agentDrafts[id] = DraftAgent(
@@ -577,19 +583,16 @@ enum WallpaperBoardBuilder {
             let agentID = key(route.agent)
             let destinationID = destinationKey(provider: route.provider, model: route.model)
             guard !agentID.isEmpty, !destinationID.isEmpty else { continue }
-            if agentDrafts[agentID]?.routeID ?? -1 >= (route.id ?? 0), agentDrafts[agentID]?.stage != .waiting {
-                continue
-            }
             if agentDrafts[agentID] == nil {
                 agentDrafts[agentID] = DraftAgent(
                     id: agentID,
                     name: Fmt.agentName(route.agent),
                     symbol: symbolForAgent(route.agent, hint: nil),
-                    calls: 0,
+                    calls: agentCalls[agentID] ?? 0,
                     stage: stage,
                     routeID: route.id ?? 0
                 )
-            } else {
+            } else if (agentDrafts[agentID]?.routeID ?? -1) < (route.id ?? 0) {
                 agentDrafts[agentID]?.stage = stage
                 agentDrafts[agentID]?.routeID = route.id ?? 0
             }
@@ -611,7 +614,6 @@ enum WallpaperBoardBuilder {
                     routeID: routeID
                 )
             }
-            flows.removeAll { $0.agentID == agentID }
             flows.append(
                 WallpaperPacketFlow(
                     id: "route-\(route.id ?? 0)",
@@ -626,7 +628,7 @@ enum WallpaperBoardBuilder {
             )
         }
 
-        if destinationDrafts.count < destinationLimit {
+        if !activeOnly, destinationDrafts.count < destinationLimit {
             let rankedModels = (usage?.models ?? []).sorted { ($0.calls ?? 0) > ($1.calls ?? 0) }
             for model in rankedModels where destinationDrafts.count < destinationLimit {
                 let id = destinationKey(provider: model.provider, model: model.model ?? model.name)
@@ -643,7 +645,7 @@ enum WallpaperBoardBuilder {
             }
         }
 
-        if destinationDrafts.isEmpty, !agentDrafts.isEmpty {
+        if !activeOnly, destinationDrafts.isEmpty, !agentDrafts.isEmpty {
             destinationDrafts["waiting|model"] = DraftDestination(
                 id: "waiting|model",
                 modelName: "等待模型",
@@ -654,7 +656,7 @@ enum WallpaperBoardBuilder {
                 routeID: -1
             )
         }
-        if agentDrafts.isEmpty, !destinationDrafts.isEmpty {
+        if !activeOnly, agentDrafts.isEmpty, !destinationDrafts.isEmpty {
             agentDrafts["waiting|agent"] = DraftAgent(
                 id: "waiting|agent",
                 name: "等待智能体",

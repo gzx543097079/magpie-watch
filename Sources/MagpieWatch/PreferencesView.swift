@@ -16,7 +16,7 @@ struct PreferencesView: View {
                         .font(.custom(WatchTheme.displayCNFont, size: 20).weight(.semibold))
                         .tracking(0.5)
                         .foregroundStyle(palette.ice)
-                    Text("桌面用量与路由观测 · 仅限本机")
+                    Text("星潮动态壁纸与桌面宠物 · 仅限本机")
                         .font(.custom(WatchTheme.displayCNFont, size: 8.5).weight(.medium))
                         .tracking(1.2)
                         .foregroundStyle(palette.mist)
@@ -32,7 +32,40 @@ struct PreferencesView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    themeSection
+                    section("动态壁纸") {
+                        Toggle("显示动态壁纸（桌面图标下方）", isOn: $model.isWallpaperEnabled)
+                        Toggle("显示可拖动桌宠", isOn: $model.isPetEnabled)
+                        Picker("鲸鱼娘待机装扮", selection: $model.petSkin) {
+                            ForEach(PetSkin.allCases) { skin in
+                                Text(skin.title + " · " + skin.subtitle).tag(skin)
+                            }
+                        }
+                        Text("单击摸头，拖动移动；右键可投喂、换装。工作时自动切换原版工作姿态。")
+                            .font(.system(size: 10)).foregroundStyle(palette.mist)
+                        HStack {
+                            Text("右侧留白（放文件夹）")
+                                .foregroundStyle(palette.ice.opacity(0.8))
+                            Spacer()
+                            Picker("右侧留白", selection: $model.wallpaperRightInset) {
+                                Text("不留").tag(0)
+                                Text("120").tag(120)
+                                Text("150").tag(150)
+                                Text("200").tag(200)
+                                Text("260").tag(260)
+                            }
+                            .labelsHidden()
+                            .frame(width: 110)
+                            .disabled(!model.isWallpaperEnabled)
+                        }
+                        Text("左侧始终让开 Dock。全屏时两边留白都取消，画面顶满左右。")
+                            .font(.custom(WatchTheme.bodyFont, size: 10))
+                            .foregroundStyle(palette.mist)
+                        Toggle("预览 Token 流向（演示数据）", isOn: $model.wallpaperPreview)
+                            .disabled(!model.isWallpaperEnabled)
+                        Text("壁纸在所有显示器常驻显示实时路由与用量，鼠标事件会直接穿透，不影响正常使用。")
+                            .font(.custom(WatchTheme.bodyFont, size: 10))
+                            .foregroundStyle(palette.mist)
+                    }
 
                     section("小组件") {
                         Toggle("显示桌面小组件", isOn: $model.isWidgetVisible)
@@ -40,14 +73,7 @@ struct PreferencesView: View {
                         Toggle("鼠标穿透", isOn: $model.clickThrough)
                     }
 
-                    section("动态壁纸") {
-                        Toggle("显示动态壁纸（桌面图标下方）", isOn: $model.isWallpaperEnabled)
-                        Toggle("显示喜鹊鲸桌面小宠物", isOn: $model.isPetEnabled)
-                            .disabled(!model.isWallpaperEnabled)
-                        Text("壁纸在所有显示器常驻显示实时路由与用量，鼠标事件会直接穿透，不影响正常使用。")
-                            .font(.custom(WatchTheme.bodyFont, size: 10))
-                            .foregroundStyle(palette.mist)
-                    }
+                    themeSection
 
                     section("动态屏保") {
                         Toggle("空闲后自动进入屏保", isOn: $model.autoScreensaver)
@@ -111,7 +137,7 @@ struct PreferencesView: View {
                     }
                 }
             }
-            Text("小组件、动态壁纸和屏保会一起换上所选主题，并记住这个选择。缓存、输入、输出始终分成三种颜色。")
+            Text("小组件和屏保会换上所选主题，并记住这个选择。动态壁纸使用星潮专属配色。缓存、输入、输出始终分成三种颜色。")
                 .font(.custom(WatchTheme.bodyFont, size: 10))
                 .foregroundStyle(palette.mist)
                 .fixedSize(horizontal: false, vertical: true)

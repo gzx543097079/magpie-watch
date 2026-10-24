@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// macOS 保留桌面图标下方的窗口；动态画面交给本地 WebGL 页面绘制。
+/// macOS 保留桌面图标下方的窗口；画面交给同源页面，字段直接读取 Magpie 原始 JSON。
 struct WallpaperWebScene: NSViewRepresentable {
     @ObservedObject var model: AppModel
+    var fullscreen = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -15,97 +16,89 @@ struct WallpaperWebScene: NSViewRepresentable {
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
-        if let page = Bundle.main.url(forResource: "starport", withExtension: "html", subdirectory: "Wallpaper") {
-            webView.loadFileURL(page, allowingReadAccessTo: page.deletingLastPathComponent())
+        LocalOrigin.shared.start()
+        if let page = LocalOrigin.shared.pageURL {
+            webView.load(URLRequest(url: page))
         } else {
-            assertionFailure("缺少 Wallpaper/starport.html")
+            assertionFailure("本地页面服务未能启动")
         }
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        let board = model.wallpaperBoard
-        let payload = Payload(
-            agents: board.agents.map {
-                .init(id: $0.id, name: $0.name, sub: "今日调用", calls: $0.calls)
-            },
-            models: board.destinations.map {
-                .init(id: $0.id, name: $0.modelName, sub: $0.providerName, calls: $0.calls)
-            },
-            flows: board.flows.map {
-                .init(
-                    id: $0.id,
-                    agentID: $0.agentID,
-                    destinationID: $0.destinationID,
-                    stage: $0.stage.rawValue,
-                    outcome: $0.outcome.webValue,
-                    statusCode: $0.statusCode
-                )
-            },
-            online: board.isOnline,
-            calls: model.todayCalls,
-            errors: model.usage?.errors ?? 0,
-            pet: model.isPetEnabled
-        )
-        guard let data = try? JSONEncoder().encode(payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-        context.coordinator.latestPayload = json
-        context.coordinator.sendIfReady()
+        context.coordinator.fullscreen = fullscreen
+        context.coordinator.rightInset = model.wallpaperRightInset
+        context.coordinator.sendConfig(maskEmails: model.maskEmails, preview: model.wallpaperPreview)
+        context.coordinator.sendStatus(online: model.isOnline, updatedAt: model.lastUpdated)
+        context.coordinator.sendLayout()
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         weak var webView: WKWebView?
         var ready = false
-        var latestPayload: String?
-        private var sentPayload: String?
+        var fullscreen = false
+        var rightInset = 120
+        private var sentConfig: String?
+        private var sentStatus: String?
+        private var sentLayout: String?
+        private var layoutObserver: NSObjectProtocol?
+
+        override init() {
+            super.init()
+            layoutObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.sendLayout()
+            }
+        }
+
+        deinit {
+            if let layoutObserver { NotificationCenter.default.removeObserver(layoutObserver) }
+        }
+
+        func sendLayout() {
+            guard ready, let webView else { return }
+            let screen = webView.window?.screen ?? NSScreen.main
+            // 左侧让开 Dock：取可见区域与屏幕左边之差；右侧让开用户放文件夹的那一列。
+            let left = max(100, (screen?.visibleFrame.minX ?? 0) - (screen?.frame.minX ?? 0) + 20)
+            let right = max(0, rightInset)
+            let bottom = max(28, (screen?.visibleFrame.minY ?? 0) - (screen?.frame.minY ?? 0) + 12)
+            let script = "window.setMagpieLayout({fullscreen:\(fullscreen),left:\(left),right:\(right),bottom:\(bottom)})"
+            guard script != sentLayout else { return }
+            sentLayout = script
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+
+        func sendConfig(maskEmails: Bool, preview: Bool) {
+            let json = "{\"mask\":\(maskEmails),\"preview\":\(preview)}"
+            guard json != sentConfig else { return }
+            sentConfig = json
+            guard ready, let webView else { return }
+            webView.evaluateJavaScript("window.setMagpieConfig(\(json))", completionHandler: nil)
+        }
+
+        func sendStatus(online: Bool, updatedAt: Date?) {
+            let stamp = updatedAt.map { String(Int($0.timeIntervalSince1970)) } ?? "null"
+            let json = "{\"online\":\(online),\"updatedAt\":\(stamp)}"
+            guard json != sentStatus else { return }
+            sentStatus = json
+            guard ready, let webView else { return }
+            webView.evaluateJavaScript("window.setMagpieStatus(\(json))", completionHandler: nil)
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             ready = true
-            sendIfReady()
-        }
-
-        func sendIfReady() {
-            guard ready, let webView, let latestPayload, latestPayload != sentPayload else { return }
-            // JSON 由 Codable 生成，不拼接未经转义的外部文本。
-            webView.evaluateJavaScript("window.setMagpieData(\(latestPayload))") { [weak self] _, error in
-                if error == nil { self?.sentPayload = latestPayload }
+            // 页面重载后布局脚本要重发一次，否则缓存的比较会把它挡掉。
+            sentLayout = nil
+            sendLayout()
+            // 首帧补发一次，避免页面在 didFinish 之前错过配置。
+            if let sentConfig {
+                webView.evaluateJavaScript("window.setMagpieConfig(\(sentConfig))", completionHandler: nil)
+            }
+            if let sentStatus {
+                webView.evaluateJavaScript("window.setMagpieStatus(\(sentStatus))", completionHandler: nil)
             }
         }
     }
-}
-
-private extension WallpaperFlowOutcome {
-    var webValue: String {
-        switch self {
-        case .ok: return "ok"
-        case .rateLimited: return "rateLimited"
-        case .disconnected: return "disconnected"
-        case .failed: return "failed"
-        case .timedOut: return "timedOut"
-        }
-    }
-}
-
-private struct Payload: Encodable {
-    struct Node: Encodable {
-        let id: String
-        let name: String
-        let sub: String
-        let calls: Int
-    }
-    struct Flow: Encodable {
-        let id: String
-        let agentID: String
-        let destinationID: String
-        let stage: String
-        let outcome: String
-        let statusCode: Int?
-    }
-    let agents: [Node]
-    let models: [Node]
-    let flows: [Flow]
-    let online: Bool
-    let calls: Int
-    let errors: Int
-    let pet: Bool
 }

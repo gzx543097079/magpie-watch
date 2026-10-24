@@ -48,6 +48,13 @@ struct MagpieAPI {
         )
     }
 
+    func requests() async throws -> UsageRequestsResponse {
+        try await get(path: "/v1/magpie/usage/requests", query: [
+            URLQueryItem(name: "period", value: "today"),
+            URLQueryItem(name: "limit", value: "100")
+        ], as: UsageRequestsResponse.self)
+    }
+
     private func get<T: Decodable>(
         path: String,
         query: [URLQueryItem] = [],

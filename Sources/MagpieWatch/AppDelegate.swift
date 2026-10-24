@@ -8,11 +8,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var widgetController: WidgetWindowController!
     private var screensaverController: ScreensaverWindowController!
     private var wallpaperController: WallpaperWindowController!
+    private var petController: PetWindowController!
+    private lazy var consumptionController = ConsumptionWindowController(model: model)
     private var preferencesWindow: NSWindow?
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
+    private var isStatusMenuTracking = false
     private var cancellables = Set<AnyCancellable>()
     private var idleTimer: Timer?
+    private var consumptionShortcut: Any?
     private var lastScreensaverPresentation: Date?
     private var suppressAutoUntil = Date().addingTimeInterval(30)
 
@@ -35,8 +39,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.dismissScreensaver()
         }
         wallpaperController = WallpaperWindowController(model: model)
+        petController = PetWindowController(model: model)
 
         configureStatusItem()
+        // NSStatusItem menu equivalents do not run when its menu is closed.
+        consumptionShortcut = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "t" else { return event }
+            self?.consumptionController.show()
+            return nil
+        }
         bindModel()
         model.start()
 
@@ -48,12 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             wallpaperController.show()
         }
 
+        petController.sync()
         startIdleMonitoring()
         applyLaunchArguments()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         idleTimer?.invalidate()
+        if let consumptionShortcut { NSEvent.removeMonitor(consumptionShortcut) }
     }
 
     private func configureStatusItem() {
@@ -73,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func rebuildStatusMenu() {
-        guard let statusMenu else { return }
+        guard let statusMenu, !isStatusMenuTracking else { return }
         statusMenu.removeAllItems()
 
         let heading = NSMenuItem(
@@ -131,6 +145,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         )
         statusMenu.addItem(themeMenuItem())
+        statusMenu.addItem(menuItem(title: "Token 消耗明细…", action: #selector(openConsumption), key: "t"))
+        statusMenu.addItem(menuItem(title: "鲸鱼娘 · 装扮与动作…", action: #selector(openPetDetails), key: ""))
+        let petMenu = NSMenu()
+        petMenu.addItem(menuItem(title: model.isPetEnabled ? "隐藏桌宠" : "显示桌宠", action: #selector(togglePet), key: ""))
+        for skin in PetSkin.allCases {
+            let item = menuItem(title: skin.title, action: #selector(selectPet(_:)), key: "")
+            item.representedObject = skin.rawValue
+            item.state = model.petSkin == skin ? .on : .off
+            petMenu.addItem(item)
+        }
+        petMenu.addItem(menuItem(title: "重置桌宠位置", action: #selector(resetPet), key: ""))
+        let petParent = NSMenuItem(title: "桌宠 · \(model.petSkin.title)", action: nil, keyEquivalent: "")
+        petParent.submenu = petMenu
+        statusMenu.addItem(petParent)
+        let preview = menuItem(title: "预览 Token 流向（演示数据）", action: #selector(togglePreview), key: "")
+        preview.state = model.wallpaperPreview ? .on : .off
+        statusMenu.addItem(preview)
         statusMenu.addItem(
             menuItem(
                 title: "偏好设置…",
@@ -190,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] _ in
                 self?.rebuildStatusMenu()
+                self?.petController.sync()
             }
             .store(in: &cancellables)
 
@@ -209,8 +241,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        model.$isPetEnabled.combineLatest(model.$petSkin)
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.petController.sync()
+                self?.rebuildStatusMenu()
+            }.store(in: &cancellables)
+        model.$isOnline.dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.petController.sync() }.store(in: &cancellables)
+
         model.$isWallpaperEnabled
             .dropFirst()
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] enabled in
                 guard let self else { return }
                 if enabled {
@@ -223,6 +266,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
     }
 
+    @objc private func togglePet() { model.isPetEnabled.toggle() }
+    @objc private func selectPet(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let skin = PetSkin(rawValue: raw) else { return }
+        model.petSkin = skin
+    }
+    @objc private func resetPet() { petController.resetPosition() }
+    @objc private func togglePreview() {
+        model.wallpaperPreview.toggle()
+        if model.wallpaperPreview { model.isWallpaperEnabled = true }
+        rebuildStatusMenu()
+    }
+
     private func startIdleMonitoring() {
         idleTimer?.invalidate()
         idleTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -231,6 +286,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
+    @objc private func openConsumption() { consumptionController.show() }
+
+    @objc private func openPetDetails() { petController.showDetails() }
 
     private func applyLaunchArguments() {
         let arguments = Set(ProcessInfo.processInfo.arguments.dropFirst())
@@ -250,6 +309,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.isWallpaperEnabled = true
             wallpaperController.show()
         }
+
+        if arguments.contains("--wallpaper-demo") {
+            model.wallpaperPreview = true
+            model.isWallpaperEnabled = true
+            model.isPetEnabled = true
+            wallpaperController.show()
+            petController.show()
+        }
+
+        if arguments.contains("--token-details") { consumptionController.show() }
+        if arguments.contains("--pet-details") { petController.showDetails() }
 
         if arguments.contains("--preferences") {
             DispatchQueue.main.async { [weak self] in
@@ -369,5 +439,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         rebuildStatusMenu()
+        isStatusMenuTracking = true
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isStatusMenuTracking = false
     }
 }
