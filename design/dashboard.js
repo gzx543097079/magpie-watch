@@ -466,7 +466,7 @@
      trace 是 4 秒快照，不是逐 token 流：每条真实路由在首次出现时回放一次往返，
      在途路由停在模型处脉冲等待，快照确认完成后才放行回程。空闲不伪造流量。 */
   const routeReduceQuery = matchMedia('(prefers-reduced-motion: reduce)');
-  const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
+  const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', direct: '#b18cff', directBack: '#dcc9ff', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
   const ROUTE_T = { req1: 700, req2: 800, res1: 1100, res2: 1100, fastK: 0.6 };
   const ROUTE_NODE_TTL = 30000;   // 智能体/模型芯片只在触发后 30 秒内存在，没再触发就退场
   const routeTrips = new Map();   // route id -> 进行中的行程
@@ -921,9 +921,17 @@
     // 3D 核心常驻：能量驱动转速与亮度；待机时是慢转呼吸态。
     if (routeCoreAlpha > 0.02) drawGatewayCore(ctx, W / 2, H / 2, now, reduce, routeCoreAlpha, energy);
 
-    // 先算活跃端点：链路辉光要在虚线下面垫一层。
+    // 先算活跃端点：链路辉光要在虚线下面垫一层（直连单独记，不点亮通往恒星的束）。
     const activeAgents = new Set(), activeModels = new Set();
+    const directAgents = new Set(), directModels = new Set();
     routeTrips.forEach((trip) => {
+      if (trip.kind === 'direct') {
+        if (trip.phase === 'd1' || trip.phase === 'd2') {
+          directAgents.add(trip.agent);
+          directModels.add(trip.model);
+        }
+        return;
+      }
       if (trip.phase === 'req1' || trip.phase === 'req2' || trip.phase === 'res2') activeAgents.add(trip.agent);
       if (trip.phase === 'parked' || trip.phase === 'res1') activeModels.add(trip.model);
       if (trip.phase === 'done' && now - trip.startedAt <= 600) activeAgents.add(trip.agent);
@@ -1083,6 +1091,39 @@
           trip.phase = 'done'; trip.startedAt = now;
           spawnSparks(an.px, an.py, trip.color, 8, 0.07);      // 落地智能体行星：火花绽开
         }
+      } else if (trip.kind === 'direct' && (trip.phase === 'd1' || trip.phase === 'd2')) {
+        // 直连旁路：agent 行星 ⇢ 模型行星的下方弧线，绕开恒星——不经网关，不点亮恒星。
+        const ax = an.px + 9, mx2 = mn.px - 9;
+        const ctrlY = Math.min(H - 12, Math.max(cy + 46, (an.py + mn.py) / 2 + 64));
+        const arc = [ax, an.py, (ax + mx2) / 2, ctrlY, (ax + mx2) / 2, ctrlY, mx2, mn.py];
+        ctx.save();
+        ctx.setLineDash([2, 5]);
+        ctx.globalAlpha = 0.30;
+        ctx.strokeStyle = ROUTE_C.direct;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(arc[0], arc[1]);
+        ctx.bezierCurveTo(arc[2], arc[3], arc[4], arc[5], arc[6], arc[7]);
+        ctx.stroke();
+        ctx.restore();
+        const dur = trip.phase === 'd1' ? 900 : 1000;
+        const t = Math.min(1, elapsed / dur);
+        const path = trip.phase === 'd1'
+          ? arc
+          : [arc[6], arc[7], arc[4], arc[5], arc[2], arc[3], arc[0], arc[1]];
+        drawRouteComet(ctx, path, Math.max(0, t - 0.3), t,
+          trip.phase === 'd1' ? ROUTE_C.direct : (trip.bad ? ROUTE_C.fail : ROUTE_C.directBack),
+          trip.width, now, reduce);
+        if (t >= 1) {
+          if (trip.phase === 'd1') {
+            trip.phase = 'd2'; trip.startedAt = now;
+            spawnSparks(mx2, mn.py, ROUTE_C.direct, 8, 0.08);           // 到达模型行星
+            routeRipples.push({ x: mx2, y: mn.py, at: now, color: ROUTE_C.direct });
+          } else {
+            trip.phase = 'done'; trip.startedAt = now;
+            spawnSparks(ax, an.py, trip.bad ? ROUTE_C.fail : ROUTE_C.directBack, 8, 0.07);  // 回到智能体行星
+          }
+        }
       } else if (trip.phase === 'done') {
         // 落地一闪：行星外圈快速收敛的光环。
         const k = Math.min(1, elapsed / 500);
@@ -1212,10 +1253,10 @@
       ctx.fillText(sub, x, y + r + (big ? 32 : 24), 150);
       ctx.restore();
     };
-    routeNodes.agents.forEach((node, name) => drawPlanet(node, ROUTE_C.request, activeAgents.has(name),
+    routeNodes.agents.forEach((node, name) => drawPlanet(node, ROUTE_C.request, activeAgents.has(name) || directAgents.has(name),
       mask(name), integer(agentCalls.get(name) || 0) + ' 次', 1, agentCalls.get(name) || 0,
       (name.charCodeAt(0) + name.length) % 3 === 0));
-    routeNodes.models.forEach((node, name) => drawPlanet(node, ROUTE_C.response, activeModels.has(name),
+    routeNodes.models.forEach((node, name) => drawPlanet(node, ROUTE_C.response, activeModels.has(name) || directModels.has(name),
       name, secs(median(modelMs.get(name) || [])), -1, (modelMs.get(name) || []).length,
       (name.charCodeAt(0) + name.length) % 3 === 1));
     // 恒星标注：网关溶入恒星本体，只在下方留一行铭牌。
@@ -1275,13 +1316,24 @@
     const reduce = routeReduceQuery.matches;
     const now = performance.now();
 
-    // 拓扑对账：活跃行程的端点优先占位，其次按最近活跃；进出场走淡入淡出。
+    // 拓扑对账：活跃行程（含直连）的端点优先占位，其次按最近活跃；进出场走淡入淡出。
+    // 直连调用：请求账本里 provider=session-unknown 且 session_provider 以 account: 开头——
+    // 本机会话直连服务商，不经网关路由，trace 里没有，只在账本里留记录。
+    const isDirect = (r) => r.agent && r.provider === 'session-unknown'
+      && String(r.session_provider || '').startsWith('account:');
+    const directRows = ((bundle.requests && bundle.requests.rows) || [])
+      .filter((r) => isDirect(r) && Date.now() - new Date(r.t).getTime() <= ROUTE_NODE_TTL);
     const tripAgentNames = [], tripModelNames = [];
     routeTrips.forEach((t) => {
       if (t.phase !== 'done') {
         if (!tripAgentNames.includes(t.agent)) tripAgentNames.push(t.agent);
         if (!tripModelNames.includes(t.model)) tripModelNames.push(t.model);
       }
+    });
+    directRows.forEach((r) => {
+      if (!tripAgentNames.includes(r.agent)) tripAgentNames.push(r.agent);
+      const m = r.served || r.model;
+      if (m && !tripModelNames.includes(m)) tripModelNames.push(m);
     });
     const agentNames = [...new Set([...tripAgentNames, ...recentNames(rows, 'agent', 3, ROUTE_NODE_TTL)])].slice(0, 3);
     const modelNames = [...new Set([...tripModelNames, ...recentNames(rows, 'model', 3, ROUTE_NODE_TTL)])].slice(0, 3);
@@ -1320,6 +1372,19 @@
         trip.bad = r.bad;
       }
     });
+    // 直连调用回放：账本里 30 秒内的直连行，每条沿旁路弧播一次（agent ⇢ 模型，不经恒星）。
+    directRows.forEach((r) => {
+      const key = 'd:' + r.t + '|' + (r.model || '');
+      seenIds.add(key);
+      if (routeSpent.has(key) || routeTrips.has(key)) return;
+      if (reduce) { routeSpent.add(key); return; }
+      routeTrips.set(key, {
+        id: key, kind: 'direct', agent: r.agent, model: r.served || r.model,
+        phase: 'd1', startedAt: now,
+        color: ROUTE_C.direct, width: 1.4 + Math.min(2.2, Math.log10(((r.in || 0) + (r.out || 0) || 1) + 1) * 0.55),
+        park: false, fast: true, out: r.out || 0, bad: !!r.status
+      });
+    });
     // 落地闪收敛完的行程移入墓碑集，让主循环可以真正停帧；同 id 不再重播。
     routeTrips.forEach((trip, id) => {
       if (trip.phase === 'done' && now - trip.startedAt > 600) {
@@ -1355,12 +1420,13 @@
     const okMsList = rows.filter((r) => r.done && r.ms).map((r) => r.ms);
     const badCount = rows.filter((r) => r.bad).length;
     $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐令牌观测';
-    $('route-foot2').textContent = !rows.length
+    const directTail = directRows.length ? ' · 直连 ' + directRows.length : '';
+    $('route-foot2').textContent = !rows.length && !directRows.length
       ? '等待第一条路由'
       : idle
-        ? '网关待机 · 中位 ' + secs(median(okMsList)) + ' · 最近 ' + rows.length + ' 条'
-        : '在途 ' + running + ' · 中位 ' + secs(median(okMsList)) + (badCount ? ' · 失败 ' + badCount : '');
-    $('route-note').textContent = '智能体 → 网关 → 模型 · 4 秒快照回放';
+        ? '网关待机 · 中位 ' + secs(median(okMsList)) + ' · 最近 ' + rows.length + ' 条' + directTail
+        : '在途 ' + running + ' · 中位 ' + secs(median(okMsList)) + (badCount ? ' · 失败 ' + badCount : '') + directTail;
+    $('route-note').textContent = '智能体 → 网关 → 模型' + (directRows.length ? '（紫=直连）' : '') + ' · 4 秒快照回放';
 
     routeTick.rows = rows;
     routeTick.todayCalls = (bundle.today && bundle.today.calls) || 0;
