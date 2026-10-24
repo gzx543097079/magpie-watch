@@ -513,44 +513,57 @@
     ctx.restore();
   }
 
-  /** 网关 3D 核心：绕 Y 轴旋转的线框球，常驻网关——待机慢转呼吸，运转随吞吐加速变亮。
-      深度以透明度与线宽表达（后暗前亮）；包裹穿过时 kick 让球体弹跳放大。 */
+  /** 网关 3D 核心：常驻科幻能量核——经纬线框球 + 双陀螺环 + 环绕粒子群 + 纬度能量波 + 发光核。
+      待机慢转呼吸；运转随吞吐加速变亮，包裹穿过时球体弹跳放射光刺。 */
+  const ROUTE_ORBITERS = Array.from({ length: 26 }, (_, i) => ({
+    a: (i / 26) * Math.PI * 2 + (i % 3) * 0.7,          // 初始相位
+    inc: 0.35 + (i % 5) * 0.42,                          // 轨道倾角（绕 X）
+    r: 1.12 + ((i * 7) % 10) / 10 * 0.5,                 // 轨道半径系数
+    sp: 0.55 + ((i * 13) % 7) / 7 * 0.9,                 // 角速度系数
+    warm: i % 3 === 0                                    // 少量冰蓝粒子，其余青
+  }));
+  let routeCorePhase = 0;         // 粒子相位累积器（平滑变速）
+  let routeCoreLastNow = 0;
+  let routeCoreWaveAt = -9e9;     // 上一次纬度能量波发射时刻
+
   function drawGatewayCore(ctx, cx, cy, now, reduce, alpha, energy) {
+    const dt = Math.max(0, Math.min(64, now - routeCoreLastNow)) / 1000;
+    routeCoreLastNow = now;
+    routeCorePhase += dt * (reduce ? 0.25 : 0.55 + 2.4 * energy);
     const breath = reduce ? 0 : Math.sin(now / 900);
-    const spin = reduce ? 0.35 : 0.35 + energy * 1.6 + routeCoreKick * 0.8;   // 转/秒
     const R = 46 * (1 + 0.07 * breath * (1 - energy) + 0.12 * routeCoreKick);
-    const yaw = (reduce ? 0.6 : (now / 1000) * spin * Math.PI * 2 / 2);
+    // 经线随相位累积器旋转：能量变化时加速而不跳变。
+    const yaw = reduce ? 0.6 : routeCorePhase * 1.6;
     const tilt = -0.38;
     const sinT = Math.sin(tilt), cosT = Math.cos(tilt);
     const SEG = 32;
     const glowK = 0.75 + 0.5 * energy + 0.35 * routeCoreKick;
+    const proj = (x, y, z) => [cx + x, cy + y * cosT - z * sinT, y * sinT + z * cosT];
     ctx.save();
-    // 能量高时加一圈外发光。
-    if (!reduce && energy > 0.05) {
-      const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.7);
-      halo.addColorStop(0, 'rgba(111, 242, 255, ' + Math.min(0.30, 0.08 + 0.20 * energy + 0.12 * routeCoreKick).toFixed(3) + ')');
+    // 能量光晕：核心能量越足，外面这团光越亮。
+    {
+      const haloR = R * (1.55 + 0.5 * energy + 0.3 * routeCoreKick);
+      const halo = ctx.createRadialGradient(cx, cy, R * 0.15, cx, cy, haloR);
+      halo.addColorStop(0, 'rgba(111, 242, 255, ' + Math.min(0.34, 0.07 + 0.18 * energy + 0.12 * routeCoreKick).toFixed(3) + ')');
       halo.addColorStop(1, 'rgba(111, 242, 255, 0)');
       ctx.fillStyle = halo;
-      ctx.fillRect(cx - R * 1.7, cy - R * 1.7, R * 3.4, R * 3.4);
+      ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
     }
     ctx.strokeStyle = ROUTE_C.request;
-    const strokeCircle3D = (points, base) => {
+    const strokeCircle3D = (points, base, widthBoost) => {
       for (let i = 0; i < points.length; i += 1) {
-        const [ax, ay, az] = points[i];
-        const [bx, by, bz] = points[(i + 1) % points.length];
-        // 倾斜投影：绕 X 轴轻俯视，z 深度决定透明度与线宽。
-        const a = [cx + ax, cy + ay * cosT - az * sinT, ay * sinT + az * cosT];
-        const b = [cx + bx, cy + by * cosT - bz * sinT, by * sinT + bz * cosT];
+        const a = proj(...points[i]);
+        const b = proj(...points[(i + 1) % points.length]);
         const k = ((a[2] + b[2]) / 2 / R + 1) / 2;
         ctx.globalAlpha = Math.min(1, alpha * base * glowK * (0.22 + 0.55 * k));
-        ctx.lineWidth = 0.7 + 0.6 * k + energy * 0.5;
+        ctx.lineWidth = 0.7 + 0.6 * k + (widthBoost || 0);
         ctx.beginPath();
         ctx.moveTo(a[0], a[1]);
         ctx.lineTo(b[0], b[1]);
         ctx.stroke();
       }
     };
-    // 经线 6 条：过两极的大圆，随 yaw 旋转。
+    // 主球：6 经线随 yaw 旋转 + 3 纬线（运转时整体更亮）。
     for (let m = 0; m < 6; m += 1) {
       const yawM = yaw + (m * Math.PI) / 6;
       const pts = [];
@@ -558,9 +571,8 @@
         const t = (s / SEG) * Math.PI * 2;
         pts.push([R * Math.sin(t) * Math.cos(yawM), R * Math.cos(t), R * Math.sin(t) * Math.sin(yawM)]);
       }
-      strokeCircle3D(pts, 0.5);
+      strokeCircle3D(pts, 0.4);
     }
-    // 纬线 3 条：上、赤道、下。
     for (let j = -1; j <= 1; j += 1) {
       const h = (R * j) / 2;
       const r = Math.sqrt(Math.max(0, R * R - h * h));
@@ -569,7 +581,91 @@
         const t = (s / SEG) * Math.PI * 2;
         pts.push([r * Math.cos(t), h, r * Math.sin(t)]);
       }
-      strokeCircle3D(pts, 0.42);
+      strokeCircle3D(pts, 0.34);
+    }
+    // 双陀螺环：两条不同倾角的大圆轨道，粒子沿其飞行使旋转可见。
+    const ringTilt = (inc, sign) => {
+      const ci = Math.cos(inc), si = Math.sin(inc);
+      const pts = [];
+      for (let s = 0; s < SEG; s += 1) {
+        const t = (s / SEG) * Math.PI * 2;
+        const x = R * 1.32 * Math.cos(t), z = R * 1.32 * sign * Math.sin(t);
+        pts.push([x, z * si, z * ci]);
+      }
+      return pts;
+    };
+    strokeCircle3D(ringTilt(1.05, 1), 0.5, energy * 0.5);
+    strokeCircle3D(ringTilt(0.55, -1), 0.42, energy * 0.5);
+    // 纬度能量波：每 ~2.2s（运转更频繁）一道亮环从赤道向两极扫。
+    const waveEvery = reduce ? 1e9 : 2400 - energy * 1300;
+    if (now - routeCoreWaveAt > waveEvery) routeCoreWaveAt = now;
+    const waveK = (now - routeCoreWaveAt) / 1100;
+    if (waveK >= 0 && waveK < 1) {
+      const wh = Math.sin(waveK * Math.PI) * R * 0.94;
+      const wr = Math.sqrt(Math.max(0, R * R - wh * wh));
+      const pts = [];
+      for (let s = 0; s < SEG; s += 1) {
+        const t = (s / SEG) * Math.PI * 2;
+        pts.push([wr * Math.cos(t), wh, wr * Math.sin(t)]);
+      }
+      ctx.save();
+      ctx.shadowColor = ROUTE_C.request;
+      ctx.shadowBlur = 6;
+      strokeCircle3D(pts, 0.85 * (1 - waveK * 0.55));
+      ctx.restore();
+    }
+    // 环绕粒子：沿各自倾斜轨道飞行，数量与速度随能量；带短拖尾。
+    const activeCount = reduce ? 8 : Math.round(8 + 18 * Math.min(1, energy + 0.25));
+    for (let i = 0; i < activeCount; i += 1) {
+      const p = ROUTE_ORBITERS[i];
+      const ang = routeCorePhase * p.sp + p.a;
+      const orbit = (theta) => {
+        const x = R * p.r * Math.cos(theta), z = R * p.r * Math.sin(theta);
+        const ci = Math.cos(p.inc), si = Math.sin(p.inc);
+        return proj(x, z * si, z * ci);
+      };
+      const [px, py] = orbit(ang);
+      const [tx, ty] = orbit(ang - 0.38);
+      ctx.save();
+      ctx.strokeStyle = p.warm ? ROUTE_C.response : ROUTE_C.request;
+      ctx.globalAlpha = alpha * 0.5 * glowK;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.globalAlpha = alpha * Math.min(1, 0.55 + 0.45 * energy);
+      ctx.fillStyle = p.warm ? ROUTE_C.response : '#d9fdff';
+      ctx.beginPath();
+      ctx.arc(px, py, 1.15 + energy * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // 中心发光核：随能量与弹跳变亮。
+    {
+      const nucR = 9 + 3 * energy + 5 * routeCoreKick;
+      const nuc = ctx.createRadialGradient(cx, cy, 0, cx, cy, nucR);
+      nuc.addColorStop(0, 'rgba(234, 252, 255, ' + (0.5 + 0.35 * energy + 0.3 * routeCoreKick).toFixed(3) + ')');
+      nuc.addColorStop(0.55, 'rgba(111, 242, 255, ' + (0.22 + 0.2 * energy).toFixed(3) + ')');
+      nuc.addColorStop(1, 'rgba(111, 242, 255, 0)');
+      ctx.fillStyle = nuc;
+      ctx.fillRect(cx - nucR, cy - nucR, nucR * 2, nucR * 2);
+    }
+    // 过境光刺：包裹穿过网关时从球面放射的短芒。
+    if (routeCoreKick > 0.04) {
+      const len = 8 + 20 * routeCoreKick;
+      for (let i = 0; i < 8; i += 1) {
+        const a = (i / 8) * Math.PI * 2 + 0.4;
+        const [x0, y0] = proj(R * Math.cos(a), R * Math.sin(a) * 0.4, R * Math.sin(a) * 0.9);
+        const [x1, y1] = proj((R + len) * Math.cos(a), (R + len) * Math.sin(a) * 0.4, (R + len) * Math.sin(a) * 0.9);
+        ctx.globalAlpha = alpha * routeCoreKick * 0.65;
+        ctx.strokeStyle = '#eafcff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
