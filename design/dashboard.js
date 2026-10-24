@@ -304,9 +304,18 @@
         const plan = g.q.plan && !String(g.q.plan).toUpperCase().includes(String(name).toUpperCase())
           && !String(name).toUpperCase().includes(String(g.q.plan).toUpperCase()) ? g.q.plan : '';
         head.children[1].textContent = plan ? mask(plan) : '';
-        // 在岗标记放在账号行尾，不占窗口行的位置。
-        head.children[2].textContent = g.q.last ? '在岗' : g.wins.length + ' 窗口';
-        head.children[2].classList.toggle('on', !!g.q.last);
+        // 账号状态分诊：用尽 > 紧张(≤20%) > 临近重置(<90min) > 正常，一眼读。
+        const stOf = (w) => {
+          if (typeof w.remaining === 'number' && w.remaining <= 0) return 3;
+          if (typeof w.remaining === 'number' && w.remaining <= 20) return 2;
+          const ra = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
+          return (ra != null && ra - Date.now() < 90 * 60000) ? 1 : 0;
+        };
+        const st = Math.max(0, ...g.wins.map(stOf));
+        node.classList.remove('st-ok', 'st-warn', 'st-bad');
+        node.classList.add(st >= 2 ? 'st-bad' : (st === 1 ? 'st-warn' : 'st-ok'));
+        head.children[2].textContent = ['正常', '临近重置', '紧张', '用尽'][st];
+        head.children[2].className = st >= 3 ? 'on out' : (st >= 2 ? 'on bad' : (st === 1 ? 'on warn' : 'on'));
 
         // 燃尽曲线：从 history 找本账号点位最多的窗口线画在标题下方。
         let sparkCanvas = node.querySelector('canvas.q-spark');
@@ -334,7 +343,7 @@
             row.append(top, track, el('div', 'q-sub'));
             return row;
           },
-          (row, w) => {
+          (row, w, i) => {
             const name = row.children[0].children[0];
             const value = row.children[0].children[1];
             const bar = row.children[1].firstChild;
@@ -348,6 +357,8 @@
             const resetAt = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
             const minsToReset = resetAt != null ? Math.round((resetAt - Date.now()) / 60000) : null;
             row.classList.toggle('soon', minsToReset != null && minsToReset >= 0 && minsToReset < 90);
+            // 最紧的窗口（排序后第一行）数字加大，扫读锚点。
+            row.classList.toggle('lead', i === 0);
             value.textContent =
               w.remaining <= 0 ? '用尽' : (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—'));
             bar.style.width = share(w.remaining || 0, 100) + '%';

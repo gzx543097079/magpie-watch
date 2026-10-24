@@ -474,8 +474,14 @@ main {
 .q-group > h3 b { font-weight: 500; color: var(--ink); letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-group > h3 i { flex: none; font-style: normal; color: var(--dim2); font-size: 8.5px; letter-spacing: 0.04em; }
 .q-group > h3 i:not(:empty) { margin-left: 2px; }
-.q-group > h3 em { flex: none; margin-left: auto; font-style: normal; font-size: 8px; letter-spacing: 0.06em; color: var(--dim2); }
+.q-group > h3 em { flex: none; margin-left: auto; font-style: normal; font-size: 9px; font-weight: 500; letter-spacing: 0.08em; color: var(--dim2); }
 .q-group > h3 em.on { color: var(--live); text-shadow: 0 0 8px rgba(111, 242, 255, 0.5); }
+.q-group > h3 em.warn { color: var(--amber); text-shadow: 0 0 8px rgba(255, 188, 125, 0.55); }
+.q-group > h3 em.bad { color: var(--void); text-shadow: 0 0 8px rgba(255, 122, 122, 0.6); }
+.q-group > h3 em.out { color: var(--void); text-shadow: 0 0 8px rgba(255, 122, 122, 0.7); animation: urgency 1.6s ease-in-out infinite; }
+/* 账号状态灯：跟着账号状态变色（正常蓝 / 临近琥珀 / 紧张用尽红），一列扫下来先看灯 */
+.q-group.st-warn > h3::before { background: var(--amber); box-shadow: 0 0 8px rgba(255, 188, 125, 0.9); }
+.q-group.st-bad > h3::before { background: var(--void); box-shadow: 0 0 9px rgba(255, 122, 122, 0.95); }
 
 /* 一行一个窗口：名字与百分比同行，余量条与重置信息在下面，行间靠留白而不是边框 */
 .q { padding: 2px 0 3px; min-width: 0; }
@@ -518,8 +524,12 @@ main {
 }
 .q-sub { color: var(--dim); font-size: 9px; line-height: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-sub b { font-family: var(--mono); font-weight: 400; }
+/* 最紧的窗口：数字加大发亮，是这一组的主读数 */
+.q.lead .q-top em { font-size: 15px; font-weight: 600; }
+.q.lead .track { height: 4px; }
 /* 临近重置走琥珀通道；红色（低余量）更急，写在后面覆盖它 */
 .q.soon .q-top em { color: var(--amber); text-shadow: 0 0 10px rgba(255, 188, 125, 0.55); }
+.q.soon .track i { background: linear-gradient(90deg, #a06a2f, var(--amber)); box-shadow: 0 0 7px rgba(255, 188, 125, 0.5); }
 .q.low .q-top em { color: var(--void); text-shadow: 0 0 10px rgba(255, 122, 122, 0.6); animation: urgency 2.2s ease-in-out infinite; }
 .q.low .track i { background: linear-gradient(90deg, #b44a4a, var(--void)); box-shadow: 0 0 8px rgba(255, 122, 122, 0.55); }
 /* 用尽的窗口：读数短促闪烁，行不消失 */
