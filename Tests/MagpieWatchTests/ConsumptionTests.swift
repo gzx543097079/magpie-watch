@@ -35,7 +35,7 @@ final class ConsumptionTests: XCTestCase {
         XCTAssertEqual(record.prompt?.parts?.first?.items?.first?.n, 2)
         let desktop = DesktopConsumptionSummary.make(record)
         XCTAssertNil(desktop.input, "Context counts must not be presented as billed input")
-        XCTAssertTrue(desktop.context.contains("工具执行返回 100 tok"))
+        XCTAssertTrue(desktop.context.contains("工具执行返回 100 令牌"))
         XCTAssertTrue(desktop.context.contains("exec_command"))
         let ledger = try decode(#"{"rows":[{"route_id":1,"compaction":true}]}"#, as: UsageRequestsResponse.self)
         XCTAssertEqual(ConsumptionRecord.merge(trace: trace, ledger: ledger).first?.purpose, "上下文压缩")

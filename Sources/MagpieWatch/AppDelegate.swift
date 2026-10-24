@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 key: ""
             )
         )
-        statusMenu.addItem(menuItem(title: "Token 消耗明细…", action: #selector(openConsumption), key: "t"))
+        statusMenu.addItem(menuItem(title: "令牌消耗明细…", action: #selector(openConsumption), key: "t"))
         statusMenu.addItem(
             menuItem(
                 title: "偏好设置…",

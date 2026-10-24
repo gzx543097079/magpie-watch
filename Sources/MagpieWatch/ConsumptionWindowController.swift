@@ -17,7 +17,7 @@ final class ConsumptionWindowController: NSObject, NSWindowDelegate {
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "MAGPIE · Token 消耗明细"
+            window.title = "MAGPIE · 令牌消耗明细"
             window.minSize = NSSize(width: 780, height: 580)
             window.isReleasedWhenClosed = false
             window.level = .floating
@@ -47,7 +47,7 @@ private struct ConsumptionView: View {
         return VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Token 消耗明细").font(.system(size: 23, weight: .semibold))
+                    Text("令牌消耗明细").font(.system(size: 23, weight: .semibold))
                     Text("桌面上的最近调用 · 展开查看上下文构成").font(.system(size: 12)).foregroundStyle(detailMuted)
                 }
                 Spacer()
@@ -144,10 +144,10 @@ private struct ConsumptionDetail: View {
                 metric("输出", record.output, Color(red: 1, green: 0.75, blue: 0.49))
             }.padding(.vertical, 4)
             if let reasoning = record.reasoning, reasoning > 0 {
-                Text("输出内推理：\(reasoning.formatted()) Token").font(.system(size: 11)).foregroundStyle(detailMuted)
+                Text("输出内推理：\(reasoning.formatted()) 令牌").font(.system(size: 11)).foregroundStyle(detailMuted)
             }
             if let writes = record.cacheWrite, writes > 0 {
-                Text("缓存写入：\(writes.formatted()) Token").font(.system(size: 11)).foregroundStyle(detailMuted)
+                Text("缓存写入：\(writes.formatted()) 令牌").font(.system(size: 11)).foregroundStyle(detailMuted)
             }
             Divider()
             if let prompt = record.prompt, let parts = prompt.parts, !parts.isEmpty {
@@ -157,14 +157,14 @@ private struct ConsumptionDetail: View {
                         Spacer()
                         Text(prompt.counted == true ? "Magpie 计数" : "Magpie 估算").font(.system(size: 10)).foregroundStyle(detailMuted)
                     }
-                    Text("工具返回和文件内容进入上下文后会消耗输入 Token。工具定义是说明书，不代表执行次数。此处包含历史内容，不与上方用量相加。")
+                    Text("工具返回和文件内容进入上下文后会消耗输入令牌。工具定义是说明书，不代表执行次数。此处包含历史内容，不与上方用量相加。")
                         .font(.system(size: 11)).foregroundStyle(detailMuted).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(Array(parts.sorted { ($0.tokens ?? 0) > ($1.tokens ?? 0) }.enumerated()), id: \.offset) { _, part in
                     PromptPartView(part: part, total: prompt.tokens)
                 }
             } else {
-                Text("Magpie 未提供这次请求的上下文拆分。请求用途与 Token 用量仍按实际返回显示。")
+                Text("Magpie 未提供这次请求的上下文拆分。请求用途与令牌用量仍按实际返回显示。")
                     .font(.system(size: 12)).foregroundStyle(detailMuted).fixedSize(horizontal: false, vertical: true)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
