@@ -1055,55 +1055,91 @@
       }
     });
     ctx.globalCompositeOperation = 'source-over';
-    const drawPlanet = (node, accent, active, label, sub, litSign, calls) => {
+    const drawPlanet = (node, accent, active, label, sub, litSign, calls, ringed) => {
       const alpha = alphaOf(node);
       if (node.px == null || alpha <= 0.02) return;
       // 半径随活跃度：常去的天体更大；入场从 30% 缩放到位（物质化）。
-      const r = (6.5 + Math.min(4, calls * 0.35) + (active ? 1 : 0)) * (node.state === 'in' && !reduce ? 0.3 + 0.7 * alpha : 1);
+      const r = (8 + Math.min(5, calls * 0.45) + (active ? 1 : 0)) * (node.state === 'in' && !reduce ? 0.3 + 0.7 * alpha : 1);
       const x = node.px, y = node.py;
       ctx.save();
       ctx.globalAlpha = alpha;
-      // 大气辉光
-      ctx.globalAlpha = alpha * (active ? 0.34 : 0.15);
-      ctx.fillStyle = accent;
+      // 大气辉光：向外扩散的渐变光晕（加性），不是一块色饼。
+      ctx.globalCompositeOperation = 'lighter';
+      const haloR = r * (active ? 3.4 : 2.3);
+      const halo = ctx.createRadialGradient(x, y, r * 0.55, x, y, haloR);
+      halo.addColorStop(0, accent);
+      halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.globalAlpha = alpha * (active ? 0.36 : 0.16);
+      ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(x, y, r * (active ? 2.6 : 1.9), 0, Math.PI * 2);
+      ctx.arc(x, y, haloR, 0, Math.PI * 2);
       ctx.fill();
-      // 本体：亮面朝恒星（litSign 指向恒星一侧），暗面沉入夜色
+      ctx.globalCompositeOperation = 'source-over';
+      // 光环（部分行星）：后半环 → 球体 → 前半环，穿环的深度感。
+      const ringTilt = 0.42;
+      const drawRingArc = (from, to, a) => {
+        ctx.globalAlpha = alpha * a;
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(x, y, r * 2.05, r * 0.5, ringTilt, from, to);
+        ctx.stroke();
+      };
+      if (ringed) drawRingArc(Math.PI, Math.PI * 2, 0.35);
+      // 球体底色：深空里的暗球，背光面更沉。
       ctx.globalAlpha = alpha;
-      const g = ctx.createRadialGradient(x + litSign * r * 0.55, y - r * 0.3, r * 0.1, x, y, r * 1.05);
-      g.addColorStop(0, '#f0feff');
-      g.addColorStop(0.42, accent);
-      g.addColorStop(1, '#071120');
-      ctx.fillStyle = g;
+      const base = ctx.createRadialGradient(x - litSign * r * 0.4, y - r * 0.45, r * 0.2, x, y, r * 1.1);
+      base.addColorStop(0, '#16283e');
+      base.addColorStop(1, '#060d18');
+      ctx.fillStyle = base;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-      // 活跃临边光弧
-      if (active) {
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.strokeStyle = '#eafcff';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 1.6, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      // 标注：名称 + 读数
+      // 受光面：晨昏线——恒星一侧扫进球内的光（裁剪在球内）。
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.clip();
+      const lx = x + litSign * r * 1.15, ly = y - r * 0.15;
+      const lit = ctx.createRadialGradient(lx, ly, 0, lx, ly, r * 1.9);
+      lit.addColorStop(0, '#eafdff');
+      lit.addColorStop(0.35, accent);
+      lit.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.globalAlpha = alpha * (active ? 0.95 : 0.75);
+      ctx.fillStyle = lit;
+      ctx.fillRect(x - r - 1, y - r - 1, r * 2 + 2, r * 2 + 2);
+      ctx.restore();
+      // 临边光弧：朝恒星一侧发亮的新月边。
+      ctx.globalAlpha = alpha * (active ? 0.95 : 0.6);
+      ctx.strokeStyle = '#f0feff';
+      ctx.lineWidth = 1.3;
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = active ? 8 : 4;
+      const midA = litSign > 0 ? 0 : Math.PI;
+      ctx.beginPath();
+      ctx.arc(x, y, r - 0.4, midA - 1.15, midA + 1.15);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      if (ringed) drawRingArc(0, Math.PI, 0.5);
+      // 标注：名称为主，读数淡一档收在下面。
       ctx.globalAlpha = alpha;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = active ? '#eafcff' : '#f2f9ff';
-      ctx.font = '600 10px ui-monospace, "SF Mono", Menlo, monospace';
-      ctx.fillText(label, x, y + r + 13, 130);
+      ctx.fillStyle = active ? '#eafcff' : '#dbe9f6';
+      ctx.font = '500 9.5px ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(label, x, y + r + 14, 132);
+      ctx.globalAlpha = alpha * 0.75;
       ctx.fillStyle = '#7e95ad';
-      ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
-      ctx.fillText(sub, x, y + r + 23, 130);
+      ctx.font = '400 8px ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(sub, x, y + r + 24, 132);
       ctx.restore();
     };
     routeNodes.agents.forEach((node, name) => drawPlanet(node, ROUTE_C.request, activeAgents.has(name),
-      mask(name), integer(agentCalls.get(name) || 0) + ' 次', 1, agentCalls.get(name) || 0));
+      mask(name), integer(agentCalls.get(name) || 0) + ' 次', 1, agentCalls.get(name) || 0,
+      (name.charCodeAt(0) + name.length) % 3 === 0));
     routeNodes.models.forEach((node, name) => drawPlanet(node, ROUTE_C.response, activeModels.has(name),
-      name, secs(median(modelMs.get(name) || [])), -1, (modelMs.get(name) || []).length));
+      name, secs(median(modelMs.get(name) || [])), -1, (modelMs.get(name) || []).length,
+      (name.charCodeAt(0) + name.length) % 3 === 1));
     // 恒星标注：网关溶入恒星本体，只在下方留一行铭牌。
     ctx.save();
     ctx.globalAlpha = 0.92 * routeCoreAlpha;
