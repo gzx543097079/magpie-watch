@@ -590,7 +590,7 @@
     routeCoreLastNow = now;
     routeCorePhase += dt * (reduce ? 0.25 : 0.55 + 2.4 * energy);
     const breath = reduce ? 0 : Math.sin(now / 900);
-    const R = 46 * (1 + 0.07 * breath * (1 - energy) + 0.12 * routeCoreKick);
+    const R = 30 * (1 + 0.07 * breath * (1 - energy) + 0.12 * routeCoreKick);
     // 经线随相位累积器旋转：能量变化时加速而不跳变。
     const yaw = reduce ? 0.6 : routeCorePhase * 1.6;
     const tilt = -0.38;
@@ -719,7 +719,7 @@
     }
     // 中心发光核：随能量与弹跳变亮。
     {
-      const nucR = 9 + 3 * energy + 5 * routeCoreKick;
+      const nucR = 6.5 + 2.2 * energy + 4 * routeCoreKick;
       const nuc = ctx.createRadialGradient(cx, cy, 0, cx, cy, nucR);
       nuc.addColorStop(0, 'rgba(234, 252, 255, ' + (0.5 + 0.35 * energy + 0.3 * routeCoreKick).toFixed(3) + ')');
       nuc.addColorStop(0.55, 'rgba(111, 242, 255, ' + (0.22 + 0.2 * energy).toFixed(3) + ')');
@@ -729,7 +729,7 @@
     }
     // 过境光刺：包裹穿过网关时从球面放射的短芒。
     if (routeCoreKick > 0.04) {
-      const len = 8 + 20 * routeCoreKick;
+      const len = 6 + 14 * routeCoreKick;
       for (let i = 0; i < 8; i += 1) {
         const a = (i / 8) * Math.PI * 2 + 0.4;
         const [x0, y0] = proj(R * Math.cos(a), R * Math.sin(a) * 0.4, R * Math.sin(a) * 0.9);
@@ -836,7 +836,7 @@
     const gwGlow = stageIdle
       ? 0.08 + routeCoreAlpha * (reduce ? 0.02 : 0.02 + 0.06 * (0.5 + 0.5 * Math.sin(now / 700)))
       : 0.08 + routeCoreAlpha * (0.04 + 0.07 * energy);
-    const gwGlowR = Math.min(W, H) * 0.42;
+    const gwGlowR = Math.min(W, H) * 0.26;
     const underglow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, gwGlowR);
     underglow.addColorStop(0, 'rgba(111, 242, 255, ' + gwGlow.toFixed(3) + ')');
     underglow.addColorStop(1, 'rgba(111, 242, 255, 0)');
@@ -909,7 +909,7 @@
     if (stageIdle && !routeNodes.agents.size && !routeNodes.models.size && routeCoreAlpha > 0.02 && !reduce) {
       for (let i = 0; i < 2; i += 1) {
         const p = ((now / 2600) + i * 0.5) % 1;
-        const r = starR + 8 + p * Math.min(H, W) * 0.34;
+        const r = starR + 8 + p * Math.min(H, W) * 0.3;
         ctx.save();
         ctx.globalAlpha = routeCoreAlpha * (1 - p) * 0.34;
         ctx.strokeStyle = ROUTE_C.request;
@@ -1146,10 +1146,10 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2f9ff';
     ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.fillText('MAGPIE 网关', cx, cy + 74);
+    ctx.fillText('MAGPIE 网关', cx, cy + 54);
     ctx.fillStyle = '#7e95ad';
     ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.fillText('今日 ' + integer(todayCalls) + ' · 在途 ' + running, cx, cy + 86);
+    ctx.fillText('今日 ' + integer(todayCalls) + ' · 在途 ' + running, cx, cy + 66);
     ctx.restore();
   }
 
