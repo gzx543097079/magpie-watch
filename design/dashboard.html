@@ -25,28 +25,20 @@
 
     <section class="mod c8 r1">
       <h2><span class="tt">今日 <i class="code">TODAY</i></span><small id="today-note"></small></h2>
-      <div class="body today-grid">
-        <div class="today-main">
-          <div class="hero-row">
-            <div class="hero"><b id="cost">—</b><span>今日支出</span></div>
-            <div class="cache">
-              <div class="cache-top"><b id="cache-rate">—</b><span>缓存命中率</span></div>
-              <div class="track"><i id="cache-bar"></i></div>
-              <div class="cache-sub" id="cache-sub"></div>
-            </div>
+      <div class="body today-body">
+        <div class="hero-row">
+          <div class="hero"><b id="cost">—</b><span>今日支出</span></div>
+          <div class="cache">
+            <div class="cache-top"><b id="cache-rate">—</b><span>缓存命中率</span></div>
+            <div class="track"><i id="cache-bar"></i></div>
+            <div class="cache-sub" id="cache-sub"></div>
           </div>
-          <div class="flow" id="flow1"></div>
-          <div class="cells" id="cells"></div>
+          <div class="mini"><span>生成速度</span><b id="mini-speed">—</b></div>
+          <div class="mini"><span>首字</span><b id="mini-ttft">—</b></div>
         </div>
-        <div class="today-side">
-          <div class="equiv" id="equiv">
-            <span>DeepSeek 等价</span>
-            <b id="equiv-usd">—</b>
-            <em id="equiv-note"></em>
-          </div>
-          <div class="flow" id="flow2"></div>
-          <div class="rhythm" id="rhythm"></div>
-        </div>
+        <div class="flow" id="flow"></div>
+        <div class="cells" id="cells"></div>
+        <div class="rhythm" id="rhythm"></div>
       </div>
       <div class="mod-foot"><span id="today-foot"></span><span id="today-foot2"></span></div>
     </section>

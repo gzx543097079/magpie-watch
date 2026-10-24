@@ -123,36 +123,37 @@
       ? compact(hit) + ' 命中 / ' + compact(billed) + ' 输入'
       : '今日还没有输入';
 
-    // DeepSeek 等价美元：官方价折算，标明 Magpie 侧实际记为免费。
+    // DeepSeek 等价美元：官方价折算（Magpie 侧实记免费），进五格读数。
     const ds = (today.models || []).filter(isDeepSeek);
     const usd = ds.reduce((s, m) => s + dsUsd(m), 0);
-    const freeCalls = ds.reduce((s, m) => s + (m.cost ? 0 : (m.calls || 0)), 0);
-    put('equiv-usd', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—');
-    $('equiv-note').textContent = ds.length
-      ? '按官方价折算 · ' + integer(ds.reduce((s, m) => s + (m.calls || 0), 0)) + ' 次调用' +
-        (freeCalls ? '（' + integer(freeCalls) + ' 次实记免费）' : '') : '今日未走 DeepSeek';
+    const dsCalls = ds.reduce((s, m) => s + (m.calls || 0), 0);
 
-    const flow1 = [['新输入', compact(today.input)], ['输出', compact(today.output)],
-                   ['缓存读', compact(today.cache_read)], ['缓存写', compact(today.cache_write)],
-                   ['推理', compact(today.reasoning)]];
-    const flow2 = [['失败', integer(today.errors) + ' / ' + pct(share(today.errors, today.calls))],
-                   ['重试', integer(today.retried)],
-                   ['会话', integer(today.sessionCount)],
-                   ['首字', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + 's' : '—'],
-                   ['速度', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' t/s' : '—'],
-                   ['未计价', integer(today.unpriced)]];
-    [['flow1', flow1], ['flow2', flow2]].forEach(([id, list]) => {
-      $(id).innerHTML = list.map(([k, v]) => `${k} <b>${v}</b>`).join('<i>·</i>');
-    });
+    // 迷你仪表：生成速度 / 首字。
+    put('mini-speed', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' t/s' : '—');
+    put('mini-ttft', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + 's' : '—');
+
+    // 流程一行：只用一维读数，失败带比率。
+    const flow = [['输入', compact(today.input)], ['输出', compact(today.output)],
+                  ['缓存读', compact(today.cache_read)], ['推理', compact(today.reasoning)],
+                  ['失败', integer(today.errors) + ' / ' + pct(share(today.errors, today.calls))],
+                  ['会话', integer(today.sessionCount)]];
+    $('flow').innerHTML = flow.map(([k, v]) => `${k} <b>${v}</b>`).join('<i>·</i>');
 
     const cells = [
       ['本周', money(week && week.cost)], ['30 日', money(month && month.cost)],
       ['总 tok', compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0))],
+      ['等价', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—'],
       ['每调用', today.calls ? '$' + (today.cost / today.calls).toFixed(3) : '—']
     ];
     keyed($('cells'), cells, ([k]) => k,
       () => { const d = el('div'); d.append(el('span'), el('b')); return d; },
-      (node, [k, v]) => { node.firstChild.textContent = k; node.lastChild.textContent = v; });
+      (node, [k, v]) => {
+        node.firstChild.textContent = k;
+        node.lastChild.textContent = v;
+        node.title = k === '等价'
+          ? (ds.length ? 'DeepSeek 官方价折算 · ' + integer(dsCalls) + ' 次调用' : '今日未走 DeepSeek')
+          : '';
+      });
 
     $('today-foot').textContent =
       '本周 ' + integer(week && week.calls) + ' 次 · 30 日 ' + integer(month && month.calls) + ' 次';
@@ -188,43 +189,6 @@
   }
 
   /* ── 额度 ── */
-  /** 账号燃尽曲线：把 quotas/history 里当前窗口的剩余额度走势画成一条小折线。 */
-  function drawQuotaSpark(canvas, line) {
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width) return;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    if (canvas.width !== Math.round(rect.width * dpr)) {
-      canvas.width = Math.round(rect.width * dpr);
-      canvas.height = Math.round(rect.height * dpr);
-    }
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, rect.width, rect.height);
-    const pts = (line && line.points) || [];
-    if (pts.length < 2) return;
-    // 只画当前窗口（以最新一点的 start 为准），跨窗口拼接没有意义。
-    const start = pts[pts.length - 1].start;
-    const win = start ? pts.filter((p) => p.start === start) : pts;
-    if (win.length < 2) return;
-    const W = rect.width, H = rect.height;
-    const x = (i) => (i / (win.length - 1)) * (W - 2) + 1;
-    const y = (left) => H - 1 - (Math.max(0, Math.min(100, left)) / 100) * (H - 2);
-    ctx.beginPath();
-    win.forEach((p, i) => { if (i) ctx.lineTo(x(i), y(p.left)); else ctx.moveTo(x(i), y(p.left)); });
-    ctx.strokeStyle = 'rgba(111, 242, 255, 0.75)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.lineTo(x(win.length - 1), H);
-    ctx.lineTo(x(0), H);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(47, 127, 214, 0.16)';
-    ctx.fill();
-    ctx.fillStyle = '#d9fdff';
-    ctx.beginPath();
-    ctx.arc(x(win.length - 1), y(win[win.length - 1].left), 1.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   /** 燃尽速度 → 估算用尽：只用当前窗口内的真实下降，重置先到就不估。 */
   function burnEstimate(line) {
     const pts = (line && line.points) || [];
@@ -274,13 +238,15 @@
 
     keyed($('quota-list'), items, (g) => g.key,
       () => {
+        // 电源墙单元：标题（灯+名+状态词）→ 大燃料条 → 主读数行 → 小字收拢行。
         const box = el('div', 'q-group');
         const head = el('h3');
         head.append(el('b'), el('i'), el('em'));
-        // 行放在内层容器里：keyed 会清掉所有不认识的子节点，标题不能和它们同级。
-        const spark = el('canvas', 'q-spark');
-        spark.dataset.key = 'spark';
-        box.append(head, spark, el('div', 'q-rows'));
+        const bar = el('div', 'q-bar');
+        bar.append(el('i'));
+        const main = el('div', 'q-main');
+        main.append(el('b'), el('em'), el('span'));
+        box.append(head, bar, main, el('div', 'q-sub'));
         return box;
       },
       (node, g) => {
@@ -298,6 +264,9 @@
         }
 
         const head = node.querySelector('h3');
+        const bar = node.querySelector('.q-bar i');
+        const main = node.querySelector('.q-main');
+        const sub = node.querySelector('.q-sub');
         const name = g.q.name || g.q.provider;
         head.children[0].textContent = mask(name);
         // plan 里常常已经写着账号名（如「ZCODE START PLAN」），重复就不再排一遍。
@@ -312,70 +281,37 @@
           return (ra != null && ra - Date.now() < 90 * 60000) ? 1 : 0;
         };
         const st = Math.max(0, ...g.wins.map(stOf));
-        node.classList.remove('st-ok', 'st-warn', 'st-bad');
+        node.classList.remove('st-ok', 'st-warn', 'st-bad', 'gone');
         node.classList.add(st >= 2 ? 'st-bad' : (st === 1 ? 'st-warn' : 'st-ok'));
+        if (st >= 3) node.classList.add('gone');
         head.children[2].textContent = ['正常', '临近重置', '紧张', '用尽'][st];
         head.children[2].className = st >= 3 ? 'on out' : (st >= 2 ? 'on bad' : (st === 1 ? 'on warn' : 'on'));
 
-        // 燃尽曲线：从 history 找本账号点位最多的窗口线画在标题下方。
-        let sparkCanvas = node.querySelector('canvas.q-spark');
-        if (!sparkCanvas) {
-          sparkCanvas = el('canvas', 'q-spark');
-          sparkCanvas.dataset.key = 'spark';
-          node.insertBefore(sparkCanvas, node.querySelector('.q-rows'));
-        }
+        // 燃料计取最紧窗口；其余窗口折进小字行。
+        const lead = g.wins[0];
+        bar.style.width = share(lead.remaining || 0, 100) + '%';
+        main.children[0].textContent = lead.name || '额度';
+        main.children[1].textContent = lead.remaining <= 0
+          ? '0%'
+          : (typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—'));
+        main.children[2].textContent = resetText(lead.resetsAt);
+
+        // 估算燃尽：history 里点位最多的窗口线。
         const rec = ((history && history.data) || []).find((h) => h.provider === g.q.provider && h.user === g.q.user);
         let bestLine = null;
         ((rec && rec.lines) || []).forEach((ln) => {
           if (!bestLine || (ln.points || []).length > (bestLine.points || []).length) bestLine = ln;
         });
-        drawQuotaSpark(sparkCanvas, bestLine);
         g.eta = bestLine ? burnEstimate(bestLine) : null;
-        const acctEta = g.eta;
 
-        keyed(node.querySelector('.q-rows'), g.wins, (w) => w.name,
-          () => {
-            const row = el('div', 'q');
-            const top = el('div', 'q-top');
-            top.append(el('b'), el('em'));
-            const track = el('div', 'track');
-            track.append(el('i'));
-            row.append(top, track, el('div', 'q-sub'));
-            return row;
-          },
-          (row, w, i) => {
-            const name = row.children[0].children[0];
-            const value = row.children[0].children[1];
-            const bar = row.children[1].firstChild;
-            const sub = row.children[2];
-
-            name.textContent = w.name || '额度';
-            const low = typeof w.remaining === 'number' && w.remaining <= 20;
-            row.classList.toggle('low', low);
-            row.classList.toggle('out', typeof w.remaining === 'number' && w.remaining <= 0);
-            // 临近重置走琥珀通道：与 resetText 的「N 分钟后重置」同一档。
-            const resetAt = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
-            const minsToReset = resetAt != null ? Math.round((resetAt - Date.now()) / 60000) : null;
-            row.classList.toggle('soon', minsToReset != null && minsToReset >= 0 && minsToReset < 90);
-            // 最紧的窗口（排序后第一行）数字加大，扫读锚点。
-            row.classList.toggle('lead', i === 0);
-            value.textContent =
-              w.remaining <= 0 ? '用尽' : (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—'));
-            bar.style.width = share(w.remaining || 0, 100) + '%';
-
-            const bits = [resetText(w.resetsAt)];
-            if (w.holds && w.holds.tokens) {
-              bits.push(compact(w.holds.tokens) + ' tok 已占');
-            } else if (w.amount != null && w.limit != null) {
-              // credits 窗口用「已用 / 总额」表达，不再叠加 0/300 credits 这类原始串。
-              bits.push(compact(w.amount) + ' / ' + compact(w.limit) + (w.unit && w.unit !== '%' ? ' ' + w.unit : ''));
-            } else if (w.display && !/^\s*\d+\s*\/\s*\d+\s+credits?\s*$/i.test(w.display)) {
-              bits.push(w.display);
-            }
-            if (acctEta && acctEta.name === w.name) bits.push('估算 ' + etaText(acctEta.etaH) + ' 用尽');
-            if (w.holdsWhy) bits.push(WHY[w.holdsWhy] || w.holdsWhy);
-            sub.textContent = bits.filter(Boolean).join(' · ');
-          });
+        // 小字行：其余窗口「名 剩余」串 + 估算 + 占用，一行收拢。
+        const bits = [];
+        g.wins.slice(1).forEach((w) => {
+          bits.push(w.name + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
+        });
+        if (g.eta && g.eta.name === lead.name) bits.push('估算 ' + etaText(g.eta.etaH) + ' 用尽');
+        if (lead.holds && lead.holds.tokens) bits.push(compact(lead.holds.tokens) + ' tok 已占');
+        sub.textContent = bits.join(' · ');
       });
     if (!groups.length) $('quota-list').replaceChildren(el('div', 'empty', '等待账号额度'));
 
