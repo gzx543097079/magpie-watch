@@ -472,12 +472,54 @@
     ctx.restore();
   }
 
-  function drawRouteComet(ctx, p, t0, t1, color, width) {
+  /* 事件火花：状态无关的瞬态粒子（位置由 时间×速度 推出，无需逐帧积分）。 */
+  const routeSparks = [];
+  function spawnSparks(x, y, color, n, speed) {
+    const t = performance.now();
+    for (let i = 0; i < n; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      const v = speed * (0.5 + Math.random() * 0.9);
+      routeSparks.push({
+        x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+        at: t, life: 360 + Math.random() * 340, color, size: 0.7 + Math.random() * 1.2
+      });
+    }
+    while (routeSparks.length > 150) routeSparks.shift();
+  }
+  function drawRouteSparks(ctx, now) {
+    for (let i = routeSparks.length - 1; i >= 0; i -= 1) {
+      const s = routeSparks[i];
+      const age = now - s.at;
+      if (age > s.life) { routeSparks.splice(i, 1); continue; }
+      const k = age / s.life;
+      ctx.globalAlpha = (1 - k) * 0.85;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(s.x + s.vx * age, s.y + s.vy * age, s.size * (1 - 0.5 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRouteComet(ctx, p, t0, t1, color, width, now, reduce) {
     const steps = 10;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
     ctx.shadowBlur = 7;
+    // 宽辉光尾流：先沿路径铺一层又宽又淡的光，尾迹长度比彗尾更长。
+    if (!reduce) {
+      const wakeT0 = Math.max(-0.1, t0 - 0.35);
+      ctx.globalAlpha = 0.11;
+      ctx.lineWidth = width * 3.4;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      for (let s = 0; s <= 10; s += 1) {
+        const [wx, wy] = cubicAt(p, wakeT0 + (t1 - wakeT0) * (s / 10));
+        if (s === 0) ctx.moveTo(wx, wy); else ctx.lineTo(wx, wy);
+      }
+      ctx.stroke();
+    }
     // 外圈柔光：一次更宽更淡的描边，给彗星体积感。
     ctx.globalAlpha = 0.09;
     ctx.lineWidth = width * 2.8;
@@ -525,6 +567,18 @@
     ctx.moveTo(hx - ny * flare * 0.55, hy + nx * flare * 0.55);
     ctx.lineTo(hx + ny * flare * 0.55, hy - nx * flare * 0.55);
     ctx.stroke();
+    // 环绕电火花：两颗微光绕彗星头部旋转，运动中不断喷出细小尾焰。
+    if (!reduce) {
+      for (let i = 0; i < 2; i += 1) {
+        const a = now / 140 + i * Math.PI;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#dffcff';
+        ctx.beginPath();
+        ctx.arc(hx + Math.cos(a) * (width + 3), hy + Math.sin(a) * (width + 3), 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (Math.random() < 0.8) spawnSparks(hx, hy, color, 1, 0.02);
+    }
     ctx.restore();
   }
 
@@ -897,22 +951,28 @@
         const t = Math.min(1, elapsed / (ROUTE_T.req1 * speed));
         activeAgents.add(trip.agent);
         transit += 1;
-        drawRouteComet(ctx, leg1, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        drawRouteComet(ctx, leg1, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
         if (t >= 1) {
           trip.phase = 'req2'; trip.startedAt = now;
           routeRipples.push({ x: gwX, y: H / 2, at: now, color: trip.color });
           routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
+          spawnSparks(gwX, H / 2, trip.color, 4, 0.05);        // 进网关：迸几颗火花
         }
       } else if (trip.phase === 'req2') {
         const t = Math.min(1, elapsed / (ROUTE_T.req2 * speed));
         activeAgents.add(trip.agent);
         transit += 1;
-        drawRouteComet(ctx, leg2, Math.max(0, t - 0.3), t, trip.color, trip.width);
-        if (t >= 1) { trip.phase = trip.park ? 'parked' : 'res1'; trip.startedAt = now; }
+        drawRouteComet(ctx, leg2, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
+        if (t >= 1) {
+          trip.phase = trip.park ? 'parked' : 'res1'; trip.startedAt = now;
+          const [mx, my2] = cubicAt(leg2, 1);
+          routeRipples.push({ x: mx, y: my2, at: now, color: trip.color });
+          spawnSparks(mx, my2, trip.color, 10, 0.09);          // 命中模型：冲击波 + 火花迸射
+        }
       } else if (trip.phase === 'parked') {
         parkedCount += 1;
         activeModels.add(trip.model);
-        // 停在模型处：一颗常亮包裹 + 呼吸环，快照确认完成才放行。
+        // 停在模型处：一颗常亮包裹 + 呼吸环 + 两颗电子环绕，快照确认完成才放行。
         const [px, py] = cubicAt(leg2, 1);
         ctx.save();
         ctx.fillStyle = trip.color;
@@ -928,25 +988,39 @@
         ctx.beginPath();
         ctx.arc(px, py, pulse + 3, 0, Math.PI * 2);
         ctx.stroke();
+        if (!reduce) {
+          for (let i = 0; i < 2; i += 1) {
+            const ea = now / 220 + i * Math.PI;
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = '#dffcff';
+            ctx.beginPath();
+            ctx.arc(px + Math.cos(ea) * (pulse + 5), py + Math.sin(ea) * (pulse + 5) * 0.4, 0.9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
         ctx.restore();
       } else if (trip.phase === 'res1') {
         activeModels.add(trip.model);
         transit += 1;
         const t = Math.min(1, elapsed / (ROUTE_T.res1 * speed));
         const back = [leg2[6], leg2[7], leg2[4], leg2[5], leg2[2], leg2[3], leg2[0], leg2[1]];
-        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
         if (t >= 1) {
           trip.phase = 'res2'; trip.startedAt = now;
           routeRipples.push({ x: gwX + gwW, y: H / 2, at: now, color: trip.color });
           routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
+          spawnSparks(gwX + gwW, H / 2, trip.color, 4, 0.05);  // 出网关：迸几颗火花
         }
       } else if (trip.phase === 'res2') {
         const t = Math.min(1, elapsed / (ROUTE_T.res2 * speed));
         const back = [leg1[6], leg1[7], leg1[4], leg1[5], leg1[2], leg1[3], leg1[0], leg1[1]];
-        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width, now, reduce);
         transit += 1;
         activeAgents.add(trip.agent);
-        if (t >= 1) { trip.phase = 'done'; trip.startedAt = now; }
+        if (t >= 1) {
+          trip.phase = 'done'; trip.startedAt = now;
+          spawnSparks(agentX + agentW, ay, trip.color, 8, 0.07);   // 落地智能体：火花绽开
+        }
       } else if (trip.phase === 'done') {
         // 落地一闪：智能体芯片外圈快速收敛。
         const k = Math.min(1, elapsed / 500);
@@ -981,6 +1055,8 @@
       ctx.stroke();
       ctx.restore();
     }
+    // 事件火花：命中/过站/落地迸出的粒子。
+    drawRouteSparks(ctx, now);
 
     // 芯片：智能体 / 网关 / 模型。智能体名按遮蔽设置渲染。
     const agentCalls = new Map(), modelMs = new Map();
@@ -1061,7 +1137,7 @@
     }
     // 待机呼吸：没有触发的智能体和模型时，网关自己做声呐呼吸，循环保持低频运转。
     const breathing = routeTick.idle && !routeReduceQuery.matches;
-    if (!active && !breathing && !routeLayoutBusy && !routeRipples.length) {
+    if (!active && !breathing && !routeLayoutBusy && !routeRipples.length && !routeSparks.length) {
       routeRaf = 0;
       drawRouteStage(ts, rows, routeTick.todayCalls || 0);
       return;
