@@ -12,7 +12,7 @@ AppKit manages desktop-level wallpaper windows and the menu bar. A same-origin l
 
 ## Users
 
-The primary user is a single Mac operator who uses Magpie to route Codex and other AI-agent traffic across multiple providers and accounts. They want the Magpie data modules as a desktop wallpaper — today/week/month usage, quotas, hourly rhythm, rankings and recent calls. Token-flow staging, a desktop pet and switchable visual themes are out of scope.
+The primary user is a single Mac operator who uses Magpie to route Codex and other AI-agent traffic across multiple providers and accounts. They want the Magpie data modules as a desktop wallpaper — today/week/month usage, quotas, hourly rhythm, rankings and recent calls, plus a round-trip stage showing each real call flowing Agent → Gateway → LLM and the reply flowing back. Decorative token-flow staging with invented or demo traffic remains out of scope; so do a desktop pet and switchable visual themes.
 
 ## Product Purpose
 
@@ -31,7 +31,7 @@ Magpie runs locally at `127.0.0.1:3425`. The app polls its usage, quota, request
 - Live today / 7-day / 30-day / all-time usage summaries from `/v1/magpie/usage`.
 - Provider/account quota windows from `/v1/magpie/quotas`.
 - Recent route and fallback activity from `/v1/magpie/usage/requests` and `/v1/magpie/trace`.
-- Desktop wallpaper presenting quotas, today's spend and cache rate, a live route stream (latency, TTFT, failures, model/folder mix, recent calls) and agent rankings.
+- Desktop wallpaper presenting quotas, today's spend and cache rate, a live route stream (latency, TTFT, failures, model/folder mix, recent calls), a round-trip stage (Agent → Gateway → LLM → back, replayed once per real trace route and labelled as 4-second snapshot replay) and agent rankings.
 - Wallpaper below desktop icons with mouse passthrough.
 - Menu-bar controls and optional legacy widget/screen-saver mode.
 - Trace polling is discrete (about four seconds); the board shows only what the gateway returned, with no interpolation or invented traffic.
@@ -40,7 +40,7 @@ Magpie runs locally at `127.0.0.1:3425`. The app polls its usage, quota, request
 
 ## Brand Commitments
 
-The wallpaper is a local data-center operations wall (NOC): dense instrument cabinets on a blueprint-grid ground, expressive light, but every glowing element must answer to a real data state — in flight, failed, low, near reset, offline. Ambient motion is limited to one slow scan sheen and quota-bar glints; no Three.js scene, no particle seas, no invented traffic. The existing Magpie identity and local-first nature should remain recognizable; the visual language may be expressive but must not imply that this is an official Magpie product.
+The wallpaper is a local data-center operations wall (NOC): dense instrument cabinets on a blueprint-grid ground, expressive light, but every glowing element must answer to a real data state — in flight, failed, low, near reset, offline. Ambient motion is limited to one slow scan sheen and quota-bar glints, plus state-driven moments: the gateway's idle breathing ring (shown only when no traffic exists), and round-trip packets replayed once from real trace routes. No Three.js scene, no particle seas, no invented traffic. The existing Magpie identity and local-first nature should remain recognizable; the visual language may be expressive but must not imply that this is an official Magpie product.
 
 ## Evidence on Hand
 

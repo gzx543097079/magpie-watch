@@ -391,7 +391,9 @@
   /** 一行分布条：主体名、主读数、副读数、占比条。 */
   function renderBars(box, items, unitText) {
     // 块高有限，多出来的主体并进最后一行，绝不把行压扁。
-    const fit = Math.max(2, Math.floor((box.parentElement.clientHeight - 18) / 24) || 5);
+    // 行距按真实值算：名 12px + 名条间距 2px + 条 4px + 行间 4px = 22px/行，另留标题 ~20px。
+    // 下限 1：块太矮时宁可合并，也不溢出（实测块高 45–55px 只容 1 行）。
+    const fit = Math.max(1, Math.floor((box.parentElement.clientHeight - 20) / 22) || 5);
     if (items.length > fit) {
       const rest = items.slice(fit - 1);
       const merged = rest.reduce((a, d) => ({ calls: a.calls + d.calls, weight: a.weight + d.weight }), { calls: 0, weight: 0 });
@@ -477,10 +479,10 @@
       ? '最近 ' + rows.length + ' 条 · 峰值 ' + secs(Math.max(...okMs))
       : '等待第一条调用';
 
-    /* 明细表：最新的在最上面，只显示放得下的行数。 */
+    /* 明细表：最新的在最上面，只显示放得下的行数（不设下限，放不下就少显示，不切半行）。 */
     const box = $('live-rows');
     const rowH = 15;
-    const fits = Math.max(3, Math.floor((box.clientHeight || 90) / rowH));
+    const fits = Math.max(1, Math.floor((box.clientHeight || 90) / rowH));
     const latest = rows.slice(-fits).reverse();
     keyed(box, latest, (r) => r.id,
       () => {
@@ -597,12 +599,345 @@
     }
   }
 
+  /* ── 实时链路：智能体 → 网关 → 模型，回复原路返回 ──
+     trace 是 4 秒快照，不是逐 token 流：每条真实路由在首次出现时回放一次往返，
+     在途路由停在模型处脉冲等待，快照确认完成后才放行回程。空闲不伪造流量。 */
+  const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
+  const ROUTE_T = { req1: 700, req2: 800, res1: 1100, res2: 1100, fastK: 0.6 };
+  const routeTrips = new Map();   // route id -> 进行中的行程
+  const routeSpent = new Set();   // 已回放过的 route id：同一条路由只播一次
+  let routeBoot = false;          // 首帧只回放最新几条，历史路由不补播
+  let routeRaf = 0;
+  let routeLastTs = 0;
+
+  /** 三次贝塞尔上取点：控制点取水平中点，得到平滑的 S 形链路。 */
+  function legPoints(x0, y0, x1, y1) {
+    const mx = (x0 + x1) / 2;
+    return [x0, y0, mx, y0, mx, y1, x1, y1];
+  }
+  function cubicAt(p, t) {
+    const u = 1 - t;
+    const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    return [a * p[0] + b * p[2] + c * p[4] + d * p[6], a * p[1] + b * p[3] + c * p[5] + d * p[7]];
+  }
+
+  function drawRouteChip(ctx, x, y, w, h, title, sub, accent, glow) {
+    ctx.save();
+    ctx.shadowColor = glow ? accent : 'transparent';
+    ctx.shadowBlur = glow ? 12 : 0;
+    ctx.fillStyle = ROUTE_C.chip;
+    ctx.strokeStyle = glow ? accent : ROUTE_C.edge;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = glow ? '#ffffff' : '#f2f9ff';
+    ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(title, x + w / 2, y + h / 2 - 1, w - 10);
+    ctx.fillStyle = glow ? accent : '#7e95ad';
+    ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText(sub, x + w / 2, y + h / 2 + 11, w - 10);
+  }
+
+  function drawRouteComet(ctx, p, t0, t1, color, width) {
+    const steps = 10;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 7;
+    // 尾巴：淡 → 亮两段，头部一颗亮点。
+    for (let i = 0; i < steps; i += 1) {
+      const a = t0 + (t1 - t0) * (i / steps);
+      const b = t0 + (t1 - t0) * ((i + 1) / steps);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.12 + 0.7 * (i / steps);
+      ctx.lineWidth = width * (0.5 + 0.5 * (i / steps));
+      ctx.beginPath();
+      const [x0, y0] = cubicAt(p, a);
+      const [x1, y1] = cubicAt(p, b);
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    const [hx, hy] = cubicAt(p, t1);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#eafcff';
+    ctx.beginPath();
+    ctx.arc(hx, hy, width * 0.85 + 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** 每帧重排舞台：芯片位置只依赖画布尺寸，数据依赖只读。 */
+  function drawRouteStage(now, rows, todayCalls) {
+    const canvas = $('route-canvas');
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    const W = rect.width, H = rect.height;
+
+    // 拓扑：最近 60 条里真实出现过的智能体与模型，按最近活跃排序，各留前 3。
+    const recent = (key) => {
+      const list = [];
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        const name = rows[i][key];
+        if (name && !list.includes(name)) list.push(name);
+        if (list.length >= 3) break;
+      }
+      return list;
+    };
+    const agents = recent('agent');
+    const models = recent('model');
+    if (!agents.length || !models.length) {
+      ctx.fillStyle = '#7e95ad';
+      ctx.font = '400 10px "Avenir Next", "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('等待第一条路由', W / 2, H / 2 + 4);
+      return;
+    }
+
+    const agentW = Math.min(148, W * 0.16), modelW = Math.min(158, W * 0.17), gwW = 108, chipH = 34;
+    const agentX = 4, modelX = W - modelW - 4, gwX = (W - gwW) / 2;
+    const yAt = (i, n) => ((i + 1) / (n + 1)) * (H - chipH - 8) + 4;
+
+    // 链路底图：虚线；有待机的链路比空闲的亮一档。
+    ctx.save();
+    ctx.setLineDash([2, 5]);
+    agents.forEach((a, i) => {
+      const p = legPoints(agentX + agentW, yAt(i, agents.length) + chipH / 2, gwX, H / 2);
+      ctx.strokeStyle = ROUTE_C.link;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p[0], p[1]);
+      ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+      ctx.stroke();
+    });
+    models.forEach((m, i) => {
+      const p = legPoints(gwX + gwW, H / 2, modelX, yAt(i, models.length) + chipH / 2);
+      ctx.strokeStyle = ROUTE_C.link;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p[0], p[1]);
+      ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。
+    const activeAgents = new Set(), activeModels = new Set();
+    let parkedCount = 0;
+    routeTrips.forEach((trip) => {
+      const ai = agents.indexOf(trip.agent);
+      const mi = models.indexOf(trip.model);
+      if (ai < 0 || mi < 0) return;
+      const ay = yAt(ai, agents.length) + chipH / 2;
+      const my = yAt(mi, models.length) + chipH / 2;
+      const leg1 = legPoints(agentX + agentW, ay, gwX, H / 2);
+      const leg2 = legPoints(gwX + gwW, H / 2, modelX, my);
+      const elapsed = now - trip.startedAt;
+      const speed = trip.fast ? ROUTE_T.fastK : 1;
+      if (trip.phase === 'req1') {
+        const t = Math.min(1, elapsed / (ROUTE_T.req1 * speed));
+        activeAgents.add(trip.agent);
+        drawRouteComet(ctx, leg1, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        if (t >= 1) { trip.phase = 'req2'; trip.startedAt = now; }
+      } else if (trip.phase === 'req2') {
+        const t = Math.min(1, elapsed / (ROUTE_T.req2 * speed));
+        activeAgents.add(trip.agent);
+        drawRouteComet(ctx, leg2, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        if (t >= 1) { trip.phase = trip.park ? 'parked' : 'res1'; trip.startedAt = now; }
+      } else if (trip.phase === 'parked') {
+        parkedCount += 1;
+        activeModels.add(trip.model);
+        // 停在模型处：一颗常亮包裹 + 呼吸环，快照确认完成才放行。
+        const [px, py] = cubicAt(leg2, 1);
+        ctx.save();
+        ctx.fillStyle = trip.color;
+        ctx.shadowColor = trip.color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(px, py, trip.width * 0.85 + 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        const pulse = 5 + 3 * Math.sin(now / 260);
+        ctx.strokeStyle = trip.color;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(px, py, pulse + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else if (trip.phase === 'res1') {
+        activeModels.add(trip.model);
+        const t = Math.min(1, elapsed / (ROUTE_T.res1 * speed));
+        const back = [leg2[6], leg2[7], leg2[4], leg2[5], leg2[2], leg2[3], leg2[0], leg2[1]];
+        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        if (t >= 1) { trip.phase = 'res2'; trip.startedAt = now; }
+      } else if (trip.phase === 'res2') {
+        const t = Math.min(1, elapsed / (ROUTE_T.res2 * speed));
+        const back = [leg1[6], leg1[7], leg1[4], leg1[5], leg1[2], leg1[3], leg1[0], leg1[1]];
+        drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        activeAgents.add(trip.agent);
+        if (t >= 1) { trip.phase = 'done'; trip.startedAt = now; }
+      } else if (trip.phase === 'done') {
+        // 落地一闪：智能体芯片外圈快速收敛。
+        const k = Math.min(1, elapsed / 500);
+        if (k < 1) {
+          ctx.save();
+          ctx.strokeStyle = trip.color;
+          ctx.globalAlpha = 0.7 * (1 - k);
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(agentX + agentW, ay, 8 + 16 * k, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+          activeAgents.add(trip.agent);
+        }
+      }
+    });
+
+    // 芯片：智能体 / 网关 / 模型。
+    const agentCalls = new Map(), modelMs = new Map();
+    rows.forEach((r) => {
+      agentCalls.set(r.agent, (agentCalls.get(r.agent) || 0) + 1);
+      if (r.ms) {
+        const list = modelMs.get(r.model) || [];
+        list.push(r.ms);
+        modelMs.set(r.model, list);
+      }
+    });
+    agents.forEach((a, i) => drawRouteChip(ctx, agentX, yAt(i, agents.length), agentW, chipH,
+      mask(a), integer(agentCalls.get(a) || 0) + ' 次', ROUTE_C.request, activeAgents.has(a)));
+    models.forEach((m, i) => drawRouteChip(ctx, modelX, yAt(i, models.length), modelW, chipH,
+      m, secs(median(modelMs.get(m) || [])), ROUTE_C.response, activeModels.has(m)));
+    const running = rows.filter((r) => !r.done).length;
+    drawRouteChip(ctx, gwX, H / 2 - chipH / 2, gwW, chipH, 'MAGPIE 网关',
+      '今日 ' + integer(todayCalls) + ' · 在途 ' + running, ROUTE_C.request, parkedCount > 0 || running > 0);
+  }
+
+  /** 舞台主循环：有移动包 30fps，只剩停泊 8fps，落地闪放完才停帧。 */
+  function routeTick(ts) {
+    const rows = routeTick.rows || [];
+    let active = false;
+    let moving = false;
+    routeTrips.forEach((trip) => {
+      if (trip.phase === 'done') {
+        // 落地一闪还在收敛（≤600ms），保持循环直到放完。
+        if (ts - trip.startedAt <= 600) active = true;
+      } else {
+        active = true;
+        if (trip.phase !== 'parked') moving = true;
+      }
+    });
+    if (!active) {
+      routeRaf = 0;
+      drawRouteStage(ts, rows, routeTick.todayCalls || 0);
+      return;
+    }
+    const minDelta = moving ? 1000 / 30 : 1000 / 8;
+    if (ts - routeLastTs >= minDelta) {
+      routeLastTs = ts;
+      drawRouteStage(ts, rows, routeTick.todayCalls || 0);
+    }
+    routeRaf = requestAnimationFrame(routeTick);
+  }
+
+  function renderRouteStage(bundle) {
+    const rows = readLive(bundle.trace);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const now = performance.now();
+
+    // 快照对账：新路由开程（每条只播一次），已在途的确认完成后放行回程。
+    const seenIds = new Set();
+    if (!routeBoot) {
+      routeBoot = true;
+      // 首帧：只有最新 3 条算「新闻」，其余历史路由直接标记已回放。
+      rows.slice(0, Math.max(0, rows.length - 3)).forEach((r) => routeSpent.add(r.id));
+    }
+    rows.forEach((r) => {
+      seenIds.add(r.id);
+      if (routeSpent.has(r.id)) return;
+      let trip = routeTrips.get(r.id);
+      if (!trip) {
+        if (reduce) return; // 减少动态：不播包，只在静态图上标注
+        trip = {
+          id: r.id, agent: r.agent, model: r.model,
+          phase: 'req1', startedAt: now,
+          color: ROUTE_C.request, width: 1.4 + Math.min(2.2, Math.log10((r.tokens || 1) + 1) * 0.55),
+          park: !r.done, fast: r.done, out: r.out || 0, bad: r.bad
+        };
+        routeTrips.set(r.id, trip);
+      } else if (trip.phase === 'parked' && r.done) {
+        trip.phase = 'res1';
+        trip.startedAt = now;
+        trip.color = r.bad ? ROUTE_C.fail : ROUTE_C.response;
+        trip.width = 1.4 + Math.min(2.2, Math.log10((r.out || 1) + 1) * 0.55);
+        trip.bad = r.bad;
+      }
+    });
+    // 落地闪收敛完的行程移入墓碑集，让主循环可以真正停帧；同 id 不再重播。
+    routeTrips.forEach((trip, id) => {
+      if (trip.phase === 'done' && now - trip.startedAt > 600) {
+        routeTrips.delete(id);
+        routeSpent.add(id);
+      }
+    });
+    // 网关重启或路由滑出窗口：清掉不再存在的行程（未回放完的不再补播）。
+    [...routeTrips.keys()].forEach((id) => {
+      if (!seenIds.has(id)) routeTrips.delete(id);
+    });
+    routeSpent.forEach((id) => { if (!seenIds.has(id)) routeSpent.delete(id); });
+    // 墓碑集上限：只记住最近 300 条，内存有界。
+    while (routeSpent.size > 300) routeSpent.delete(routeSpent.values().next().value);
+    // 进行中行程上限：只保留最近 7 条，优先让已完成的让路；被挤出的不再重播。
+    while (routeTrips.size > 7) {
+      const entries = [...routeTrips.entries()].sort((a, b) => a[1].startedAt - b[1].startedAt);
+      const victim = entries.find(([, t]) => t.phase === 'done') || entries[0];
+      routeTrips.delete(victim[0]);
+      routeSpent.add(victim[0]);
+    }
+
+    const running = rows.filter((r) => !r.done).length;
+    const body = document.querySelector('.route-body');
+    const idle = !routeTrips.size && !running;
+    body.classList.toggle('idle', idle);
+    body.classList.toggle('busy', !idle);
+    $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐 token 观测';
+    $('route-foot2').textContent = running
+      ? '在途 ' + running + ' 条 · 等上游返回'
+      : (rows.length ? '网关待机 · 最近 ' + rows.length + ' 条路由' : '等待第一条路由');
+    $('route-note').textContent = '智能体 → 网关 → 模型 · 4 秒快照回放';
+
+    routeTick.rows = rows;
+    routeTick.todayCalls = (bundle.today && bundle.today.calls) || 0;
+    if (reduce) {
+      if (routeRaf) { cancelAnimationFrame(routeRaf); routeRaf = 0; }
+      drawRouteStage(now, rows, routeTick.todayCalls);
+      return;
+    }
+    if (!routeRaf) {
+      routeLastTs = 0;
+      routeRaf = requestAnimationFrame(routeTick);
+    }
+  }
+
   /* ── 主循环 ── */
   function paint(bundle) {
     const { today, week, month, quotas } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas);
     renderAgents(today);
+    renderRouteStage(bundle);
     renderLive(bundle);
     // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
     $('gw-label').textContent = online ? '网关在线' : '网关离线';

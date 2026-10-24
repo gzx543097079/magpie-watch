@@ -82,9 +82,10 @@ body::after {
 body.settling .wall > * { animation: settle 0.78s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
 body.settling main > .mod { animation: settle 0.86s cubic-bezier(0.22, 0.61, 0.36, 1) both, ignite 1.3s ease-out both; }
 body.settling main > .mod:nth-child(1) { animation-delay: 0.04s, 0.04s; }
-body.settling main > .mod:nth-child(2) { animation-delay: 0.09s, 0.09s; }
-body.settling main > .mod:nth-child(3) { animation-delay: 0.14s, 0.14s; }
-body.settling main > .mod:nth-child(4) { animation-delay: 0.19s, 0.19s; }
+body.settling main > .mod:nth-child(2) { animation-delay: 0.08s, 0.08s; }
+body.settling main > .mod:nth-child(3) { animation-delay: 0.12s, 0.12s; }
+body.settling main > .mod:nth-child(4) { animation-delay: 0.16s, 0.16s; }
+body.settling main > .mod:nth-child(5) { animation-delay: 0.20s, 0.20s; }
 
 @keyframes settle {
   from { opacity: 0; transform: translateY(8px) scale(0.992); }
@@ -184,8 +185,8 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列三段（今日 / 实时往返 / 智能体），右栏八列整块留给账号额度。 */
-  grid-template-rows: minmax(0, 26fr) minmax(0, 55fr) minmax(0, 19fr);
+  /* 左栏四列整块留给账号额度；右栏八列四段（今日 / 实时链路 / 实时数据流 / 智能体）。 */
+  grid-template-rows: minmax(0, 24fr) minmax(0, 25fr) minmax(0, 35fr) minmax(0, 16fr);
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -317,6 +318,7 @@ main {
 .r1 { grid-row: 1; }
 .r2 { grid-row: 2; }
 .r3 { grid-row: 3; }
+.r4 { grid-row: 4; }
 .c4 { grid-column: span 4; }
 .c8 { grid-column: span 8; }
 .c12 { grid-column: span 12; }
@@ -555,11 +557,35 @@ main {
 .a b, .a em { line-height: 15px; }
 .a span { grid-column: 1 / -1; color: var(--dim); font-size: 9px; line-height: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* 实时链路：智能体 → 网关 → 模型的快照回放舞台 */
+.route-body { position: relative; }
+.route-body canvas { width: 100%; height: 100%; display: block; }
+/* 网关待机呼吸环：画布停帧时唯一的活物，纯 CSS，位置对准画布中央的网关芯片 */
+.gw-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  border: 1px solid rgba(111, 242, 255, 0.45);
+  box-shadow: 0 0 12px rgba(111, 242, 255, 0.25), inset 0 0 8px rgba(111, 242, 255, 0.15);
+  opacity: 0;
+  pointer-events: none;
+}
+.route-body.idle .gw-ring { opacity: 1; animation: gwBreath 3.4s ease-in-out infinite; }
+.route-body.busy .gw-ring { opacity: 0; animation: none; }
+@keyframes gwBreath {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.18); }
+}
+
 /* 实时数据流：KPI 条 + 单次耗时轨迹 + 分布条 + 最近路由表，一格一块 */
 .live-body {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1.12fr) minmax(0, 0.88fr) auto;
+  grid-template-rows: auto minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.15fr);
   grid-template-areas:
     "kpi kpi"
     "chart models"
@@ -615,8 +641,8 @@ main {
 .live-chart-head span:last-child { color: var(--dim2); letter-spacing: 0.03em; }
 .live-chart canvas { flex: 1; width: 100%; min-height: 0; display: block; }
 
-/* 分布条：一行一个主体，条与数字同排 */
-.live-block { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* 分布条：一行一个主体，条与数字同排；块高固定，溢出一律裁掉，不与邻块相撞 */
+.live-block { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .live-block.models { grid-area: models; }
 .live-block.folders { grid-area: folders; }
 .live-block > h3 {
