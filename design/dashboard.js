@@ -132,9 +132,9 @@
     put('mini-speed', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' t/s' : '—');
     put('mini-ttft', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + 's' : '—');
 
-    // 流程一行：只用一维读数，失败带比率。
+    // 流程一行：只用一维读数，失败带比率（推理含在输出内，不重复列）。
     const flow = [['输入', compact(today.input)], ['输出', compact(today.output)],
-                  ['缓存读', compact(today.cache_read)], ['推理', compact(today.reasoning)],
+                  ['缓存读', compact(today.cache_read)],
                   ['失败', integer(today.errors) + ' / ' + pct(share(today.errors, today.calls))],
                   ['会话', integer(today.sessionCount)]];
     $('flow').innerHTML = flow.map(([k, v]) => `${k} <b>${v}</b>`).join('<i>·</i>');
@@ -142,8 +142,7 @@
     const cells = [
       ['本周', money(week && week.cost)], ['30 日', money(month && month.cost)],
       ['总 tok', compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0))],
-      ['等价', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—'],
-      ['每调用', today.calls ? '$' + (today.cost / today.calls).toFixed(3) : '—']
+      ['等价', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—']
     ];
     keyed($('cells'), cells, ([k]) => k,
       () => { const d = el('div'); d.append(el('span'), el('b')); return d; },
@@ -181,7 +180,9 @@
         const cur = i === hours.length - 1;
         node.style.height = Math.max(3, share(h.calls || 0, maxCalls)) + '%';
         node.className = cur ? 'cur' : ((h.calls || 0) ? '' : 'zero');
-        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost);
+        if (h.errors) node.className = (cur ? 'cur' : '') + ' err';
+        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost)
+          + (h.errors ? ' · 失败 ' + integer(h.errors) : '');
       });
     box.querySelector('.rhythm-head b').textContent = hours.length
       ? '峰值 ' + integer(peak.calls || 0) + ' 次 · ' + peak.label + ' 时'
@@ -243,7 +244,9 @@
         const head = el('h3');
         head.append(el('b'), el('i'), el('em'));
         const bar = el('div', 'q-bar');
-        bar.append(el('i'));
+        const fill = el('i');
+        fill.append(el('span', null), el('span', 'qp2'));   // 电流粒子
+        bar.append(fill);
         const main = el('div', 'q-main');
         main.append(el('b'), el('em'), el('span'));
         box.append(head, bar, main, el('div', 'q-sub'));
@@ -326,7 +329,7 @@
       !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
     $('quota-foot2').textContent = noWin
       ? '另有 ' + noWin + ' 个账号未上报窗口'
-      : (fastest ? '最快燃尽 · ' + fastest.name + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '全部账号均已上报窗口');
+      : (fastest ? '最快燃尽 · ' + fastest.name + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '');
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
@@ -1370,13 +1373,14 @@
 
   /* ── 主循环 ── */
   function paint(bundle) {
-    const { today, week, month, quotas, history, requests } = bundle;
+    const { today, week, month, quotas, history, requests, info } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas, history);
     renderAgents(today, readLive(bundle.trace));
     renderCalls(requests);
     renderRouteStage(bundle);
-    // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
+    // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
+    $('gw-meta').textContent = info ? 'magpie v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
     $('source-note').textContent = '数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽 · ' +
       (online ? '网关在线' : '网关离线 · 保留上次数据') +
@@ -1386,7 +1390,7 @@
 
   async function refresh() {
     try {
-      const [today, week, month, quotas, trace, history, requests] = await Promise.all([
+      const [today, week, month, quotas, trace, history, requests, info] = await Promise.all([
         get('/v1/magpie/usage?period=today'),
         get('/v1/magpie/usage?period=7d'),
         get('/v1/magpie/usage?period=30d'),
@@ -1395,10 +1399,12 @@
         // 燃尽曲线数据：单独容错——拿不到只是少画一条线，不算离线。
         get('/v1/magpie/quotas/history').catch(() => null),
         // 请求账本：单独容错——拿不到只少两行明细。
-        get('/v1/magpie/usage/requests?period=today&limit=6').catch(() => null)
+        get('/v1/magpie/usage/requests?period=today&limit=6').catch(() => null),
+        // 网关铭牌（版本/模型数）：单独容错。
+        get('/').catch(() => null)
       ]);
       online = true;
-      lastGood = { today, week, month, quotas, trace, history, requests, at: Date.now() };
+      lastGood = { today, week, month, quotas, trace, history, requests, info, at: Date.now() };
       paint(lastGood);
     } catch (error) {
       online = false;

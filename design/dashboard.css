@@ -155,6 +155,8 @@ header {
   min-width: 0;
 }
 
+.gw-meta { font-family: var(--mono); color: var(--dim2); font-size: 9.5px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
 /* 网关状态灯：在线青色常亮，离线红色常亮——光只表达状态，不空转 */
 .gw { display: inline-flex; align-items: center; gap: 7px; }
 .gw b { font-weight: 500; color: var(--muted); letter-spacing: 0.08em; }
@@ -383,8 +385,8 @@ main {
 .flow i { font-style: normal; margin: 0 7px; color: #2f4358; }
 .flow b { font-family: var(--mono); color: var(--ink); font-weight: 500; }
 
-/* 一行五个读数：本周 / 30 日 / 总 tok / 等价 / 每调用 */
-.cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 11px; }
+/* 一行四个读数：本周 / 30 日 / 总 tok / 等价 */
+.cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 11px; }
 .cells span { display: block; color: var(--dim); font-size: 9px; letter-spacing: 0.05em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cells b { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
 
@@ -406,6 +408,7 @@ main {
   min-width: 2px;
   max-width: 14px;
   display: block;
+  position: relative;
   background: rgba(47, 127, 214, 0.4);
   border-top: 1px solid rgba(111, 242, 255, 0.35);
 }
@@ -413,7 +416,31 @@ main {
   background: linear-gradient(180deg, var(--live), rgba(47, 127, 214, 0.5));
   box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
 }
+/* 当前小时冒出的荧光火花：此刻有活动的小时才会「冒烟」 */
+.rhythm-bars i.cur::before,
+.rhythm-bars i.cur::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: #dffcff;
+  box-shadow: 0 0 5px rgba(111, 242, 255, 0.95);
+  animation: rise 1.7s ease-out infinite;
+}
+.rhythm-bars i.cur::after { animation-delay: 0.85s; }
+@keyframes rise {
+  from { transform: translate(-50%, 1px); opacity: 0.95; }
+  to { transform: translate(-50%, -15px); opacity: 0; }
+}
 .rhythm-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
+/* 出过错的小时：柱顶一段红，故障时段一眼可辨 */
+.rhythm-bars i.err {
+  background: linear-gradient(180deg, rgba(255, 122, 122, 0.65) 0 3px, rgba(47, 127, 214, 0.4) 3px);
+  border-top-color: rgba(255, 122, 122, 0.8);
+}
 
 /* 额度：左栏三分之一整列。账号之间留白，窗口之间只留一条细线，不靠边框分隔。 */
 .quota-mod { grid-row: 1 / -1; }
@@ -502,6 +529,27 @@ main {
   background: linear-gradient(90deg, transparent, rgba(220, 246, 255, 0.55), transparent);
   animation: glide 6s linear infinite;
 }
+/* 电流粒子：燃料条里两颗沿填充长度流动的荧光点——有余量才有电流，用尽的条是死的 */
+.q-bar i span {
+  position: absolute;
+  top: 50%;
+  margin-top: -1.5px;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #e4fdff;
+  box-shadow: 0 0 6px rgba(111, 242, 255, 0.95);
+  animation: qflow 3s linear infinite;
+}
+.q-bar i span.qp2 { animation-delay: 1.5s; }
+@keyframes qflow {
+  from { left: 0; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  to { left: calc(100% - 3px); opacity: 0; }
+}
+.q-group.st-bad.gone .q-bar i span { display: none; }
 @keyframes glide {
   from { transform: translateX(-40px); }
   to { transform: translateX(400px); }
