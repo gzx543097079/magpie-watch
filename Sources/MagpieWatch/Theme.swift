@@ -1,47 +1,10 @@
 import AppKit
 import SwiftUI
 
-// MARK: - 主题
+// MARK: - 配色
 
-/// 可切换的视觉主题。语义角色在每套配色里保持不变：
-/// `sea` / `seaBright` 是主能量与缓存流，`blue` 是输入流，
-/// `amber` 是输出流和费用，`violet` 是氛围，`coral` 是错误。
-enum WatchThemeID: String, CaseIterable, Identifiable {
-    case aurora
-    case noir
-    case ion
-    case ember
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .aurora: return "极光暮色"
-        case .noir: return "黑金夜宴"
-        case .ion: return "离子极昼"
-        case .ember: return "熔核"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .aurora: return "青紫能量，琥珀回流"
-        case .noir: return "香槟与银，红宝石回流"
-        case .ion: return "冷白与钴蓝，品红回流"
-        case .ember: return "熔岩上行，冷青回流"
-        }
-    }
-
-    var palette: WatchPalette {
-        switch self {
-        case .aurora: return .aurora
-        case .noir: return .noir
-        case .ion: return .ion
-        case .ember: return .ember
-        }
-    }
-}
-
+/// 固定的单一配色。语义角色保持不变：`sea` / `seaBright` 是主能量与缓存流，
+/// `blue` 是输入流，`amber` 是输出流和费用，`violet` 是氛围，`coral` 是错误。
 struct WatchPalette: Equatable {
     var abyss: Color
     var deep: Color
@@ -75,7 +38,7 @@ struct WatchPalette: Equatable {
         }
     }
 
-    static let aurora = WatchPalette(
+    static let watch = WatchPalette(
         abyss: rgb(0.016, 0.024, 0.055),
         deep: rgb(0.043, 0.070, 0.130),
         panel: rgb(0.065, 0.100, 0.175),
@@ -90,58 +53,10 @@ struct WatchPalette: Equatable {
         violet: rgb(0.655, 0.545, 0.980),
         hairline: Color.white.opacity(0.12)
     )
-
-    static let noir = WatchPalette(
-        abyss: rgb(0.035, 0.026, 0.018),
-        deep: rgb(0.078, 0.056, 0.034),
-        panel: rgb(0.112, 0.084, 0.052),
-        sea: rgb(0.860, 0.690, 0.340),
-        seaBright: rgb(0.980, 0.860, 0.520),
-        ice: rgb(0.970, 0.940, 0.880),
-        mist: rgb(0.690, 0.610, 0.500),
-        amber: rgb(0.910, 0.280, 0.380),
-        coral: rgb(0.980, 0.420, 0.300),
-        blue: rgb(0.760, 0.830, 0.900),
-        green: rgb(0.640, 0.760, 0.420),
-        violet: rgb(0.720, 0.460, 0.300),
-        hairline: Color.white.opacity(0.12)
-    )
-
-    static let ion = WatchPalette(
-        abyss: rgb(0.010, 0.018, 0.042),
-        deep: rgb(0.028, 0.052, 0.105),
-        panel: rgb(0.046, 0.078, 0.150),
-        sea: rgb(0.420, 0.760, 1.000),
-        seaBright: rgb(0.820, 0.960, 1.000),
-        ice: rgb(0.940, 0.965, 1.000),
-        mist: rgb(0.520, 0.620, 0.740),
-        amber: rgb(0.980, 0.360, 0.780),
-        coral: rgb(1.000, 0.320, 0.340),
-        blue: rgb(0.280, 0.460, 1.000),
-        green: rgb(0.250, 0.900, 0.820),
-        violet: rgb(0.540, 0.380, 1.000),
-        hairline: Color.white.opacity(0.14)
-    )
-
-    static let ember = WatchPalette(
-        abyss: rgb(0.042, 0.014, 0.012),
-        deep: rgb(0.092, 0.030, 0.022),
-        panel: rgb(0.132, 0.048, 0.034),
-        sea: rgb(0.960, 0.380, 0.150),
-        seaBright: rgb(0.990, 0.560, 0.180),
-        ice: rgb(0.980, 0.930, 0.890),
-        mist: rgb(0.710, 0.560, 0.480),
-        amber: rgb(0.280, 0.880, 0.920),
-        coral: rgb(1.000, 0.280, 0.220),
-        blue: rgb(0.990, 0.860, 0.620),
-        green: rgb(0.560, 0.820, 0.380),
-        violet: rgb(0.780, 0.200, 0.240),
-        hairline: Color.white.opacity(0.12)
-    )
 }
 
 private struct WatchPaletteKey: EnvironmentKey {
-    static let defaultValue = WatchThemeID.aurora.palette
+    static let defaultValue = WatchPalette.watch
 }
 
 extension EnvironmentValues {

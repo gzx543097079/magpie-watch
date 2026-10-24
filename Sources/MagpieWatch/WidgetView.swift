@@ -8,7 +8,7 @@ struct WidgetView: View {
 
     private var expandedSize: CGSize { CGSize(width: 430, height: 640) }
     private var compactSize: CGSize { CGSize(width: 294, height: 196) }
-    private var palette: WatchPalette { model.theme.palette }
+    private var palette: WatchPalette { .watch }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -30,7 +30,6 @@ struct WidgetView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: model.widgetExpanded)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: model.theme)
         .environment(\.watchPalette, palette)
     }
 
