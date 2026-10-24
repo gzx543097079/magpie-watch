@@ -51,14 +51,6 @@
       : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm;
   };
 
-  const agoText = (ms) => {
-    if (ms == null) return '—';
-    const s = Math.round(ms / 1000);
-    if (s < 60) return s + ' 秒';
-    if (s < 3600) return Math.round(s / 60) + ' 分钟';
-    return (s / 3600).toFixed(1) + ' 小时';
-  };
-
   const resetText = (iso) => {
     if (!iso) return '无重置';
     const d = new Date(iso);
@@ -338,26 +330,35 @@
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
-  /* ── 智能体 ── */
-  function renderAgents(today, traceRows) {
-    // 行高只够四行，多出的智能体并进「另 N 个」，不做裁切。
-    const all = [...(today.agents || [])].sort((a, b) => (b.cost || 0) - (a.cost || 0));
-    const agents = all.slice(0, 3);
-    if (all.length > 3) {
-      agents.push(all.slice(3).reduce((acc, a) => ({
-        id: '__more', name: '另 ' + (all.length - 3) + ' 个',
-        cost: (acc.cost || 0) + (a.cost || 0), calls: (acc.calls || 0) + (a.calls || 0),
-        errors: (acc.errors || 0) + (a.errors || 0)
+  /* ── 模型矩阵 ──
+     usage.models 按 provider/model@账号 拆分，这里按模型名聚合成今日矩阵；
+     智能体的活动状态由星系行星表达，成本归属在「令牌消耗明细」窗口。 */
+  function renderModels(today) {
+    const agg = new Map();
+    (today.models || []).forEach((m) => {
+      const key = m.model || String(m.id || '').split(' @ ')[0] || '未知模型';
+      const g = agg.get(key) || { name: key, calls: 0, cost: 0, errors: 0, timed: 0, ttft_ms: 0, decode_ms: 0, decode_out: 0 };
+      g.calls += m.calls || 0;
+      g.cost += m.cost || 0;
+      g.errors += m.errors || 0;
+      g.timed += m.timed || 0;
+      g.ttft_ms += m.ttft_ms || 0;
+      g.decode_ms += m.decode_ms || 0;
+      g.decode_out += m.decode_out || 0;
+      agg.set(key, g);
+    });
+    const all = [...agg.values()].sort((a, b) => (b.cost || 0) - (a.cost || 0));
+    // 两行三列，多出的模型并进「另 N 个」。
+    const models = all.slice(0, 6);
+    if (all.length > 6) {
+      models.push(all.slice(6).reduce((acc, m) => ({
+        name: '另 ' + (all.length - 6) + ' 个',
+        cost: (acc.cost || 0) + (m.cost || 0), calls: (acc.calls || 0) + (m.calls || 0),
+        errors: (acc.errors || 0) + (m.errors || 0)
       }), {}));
     }
-    // 最近活跃：以 trace 里该智能体最后一次真实触发的时刻为准。
-    const lastSeen = new Map();
-    (traceRows || []).forEach((r) => {
-      const prev = lastSeen.get(r.agent);
-      if (prev == null || r.at > prev) lastSeen.set(r.agent, r.at);
-    });
-    const maxCalls = Math.max(1, ...agents.map((a) => a.calls || 0));
-    keyed($('agent-list'), agents, (a) => a.id || a.name,
+    const maxCost = Math.max(0.0001, ...models.map((m) => m.cost || 0));
+    keyed($('model-list'), models, (m) => m.name,
       () => {
         const row = el('div', 'a');
         row.append(el('b'), el('em'), el('span'));
@@ -366,21 +367,21 @@
         row.append(share);
         return row;
       },
-      (node, a) => {
-        node.children[0].textContent = mask(a.name || a.id);
-        node.children[1].textContent = money(a.cost);
-        const bits = [integer(a.calls) + ' 次'];
-        if (a.timed) bits.push('首字 ' + (a.ttft_ms / a.timed / 1000).toFixed(1) + ' 秒');
-        if (a.decode_ms) bits.push(Math.round(a.decode_out / (a.decode_ms / 1000)) + ' 字/秒');
-        if (a.errors) bits.push('失败 ' + a.errors);
-        if (a.reasoning) bits.push('推理 ' + compact(a.reasoning));
-        const seen = lastSeen.get(a.id || a.name);
-        if (seen && a.id !== '__more') bits.push(agoText(Date.now() - seen) + '前活跃');
+      (node, m) => {
+        node.children[0].textContent = m.name;
+        node.children[1].textContent = money(m.cost);
+        const bits = [integer(m.calls) + ' 次'];
+        if (m.timed) bits.push('首字 ' + (m.ttft_ms / m.timed / 1000).toFixed(1) + ' 秒');
+        if (m.decode_ms) bits.push(Math.round(m.decode_out / (m.decode_ms / 1000)) + ' 字/秒');
+        if (m.errors) bits.push('失败 ' + m.errors);
         node.children[2].textContent = bits.join(' · ');
-        node.children[3].firstChild.style.width = share(a.calls || 0, maxCalls) + '%';
+        // 占比条按成本：钱花在哪块模型上一眼看。
+        node.children[3].firstChild.style.width = share(m.cost || 0, maxCost) + '%';
+        if (m.errors) node.children[3].firstChild.style.background = 'linear-gradient(90deg, #b44a4a, var(--void))';
+        else node.children[3].firstChild.style.background = '';
       });
-    if (!agents.length) $('agent-list').replaceChildren(el('div', 'empty', '等待智能体用量'));
-    $('agent-foot').textContent = integer(today.calls) + ' 次 · ' + money(today.cost);
+    if (!models.length) $('model-list').replaceChildren(el('div', 'empty', '等待模型用量'));
+    $('model-foot').textContent = all.length + ' 模型 · 今日 ' + money(today.cost);
   }
 
   /* ── 最近调用：请求账本（usage/requests）的明细带，两行最新真实调用 ── */
@@ -1447,7 +1448,7 @@
     const { today, week, month, quotas, history, requests, info } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas, history);
-    renderAgents(today, readLive(bundle.trace));
+    renderModels(today);
     renderCalls(requests);
     renderRouteStage(bundle);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。

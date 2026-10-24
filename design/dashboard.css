@@ -598,8 +598,8 @@ main {
 .q-idle b { flex: none; font-weight: 400; font-size: 10px; color: var(--muted); letter-spacing: 0.03em; }
 .q-idle span { color: var(--dim2); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 智能体 */
-.agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
+/* 模型矩阵：一行一模型，名字 + 成本 + 明细 + 调用占比条 */
+.models-wide, .agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
 .a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--hair); }
 .a:last-child { border-bottom: 0; }
 .a b { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
