@@ -401,28 +401,32 @@ main {
 .cells span { display: block; color: var(--dim); font-size: 9.5px; letter-spacing: 0.05em; margin-bottom: 2px; }
 .cells b { font-family: var(--mono); font-size: 17px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
 
-/* 最近三小时：右栏底部，三行柱状读数 */
-.recent-hours > span {
-  display: block;
+/* 24 小时节奏：一排小时柱，当前小时点亮；峰值注在标题行 */
+.rhythm { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair); }
+.rhythm-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
   color: var(--dim);
   font-size: 9px;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
-.recent-hours { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair); }
-.rh {
-  display: grid;
-  grid-template-columns: 34px 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 3px 0;
-  font-size: 10.5px;
-  color: var(--muted);
+.rhythm-head b { color: var(--muted); font-weight: 400; letter-spacing: 0.03em; }
+.rhythm-bars { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+.rhythm-bars i {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 14px;
+  display: block;
+  background: rgba(47, 127, 214, 0.4);
+  border-top: 1px solid rgba(111, 242, 255, 0.35);
 }
-.rh b { font-family: var(--mono); color: var(--ink); font-weight: 500; }
-.rh .track { margin: 0; }
-.rh em { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; }
+.rhythm-bars i.cur {
+  background: linear-gradient(180deg, var(--live), rgba(47, 127, 214, 0.5));
+  box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
+}
+.rhythm-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
 
 /* 额度：左栏三分之一整列。账号之间留白，窗口之间只留一条细线，不靠边框分隔。 */
 .quota-mod { grid-row: 1 / -1; }
@@ -438,6 +442,8 @@ main {
 }
 .q-list::-webkit-scrollbar { width: 0; }
 .q-group { min-width: 0; }
+/* 燃尽曲线：账号标题下一条剩余额度走势（quotas/history），一眼看出烧得多快 */
+.q-spark { display: block; width: 100%; height: 14px; margin: 1px 0 3px; }
 .q-rows { min-width: 0; display: flex; flex-direction: column; }
 
 /* 账号名是这一组的主语：字号比窗口名大一档，前面一枚发光圆点 */
@@ -540,7 +546,7 @@ main {
 
 /* 智能体 */
 .agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
-.a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0; border-bottom: 1px solid var(--hair); }
+.a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--hair); }
 .a:last-child { border-bottom: 0; }
 .a b { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .a em {
@@ -554,6 +560,9 @@ main {
 }
 .a b, .a em { line-height: 15px; }
 .a span { grid-column: 1 / -1; color: var(--dim); font-size: 9px; line-height: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 调用占比：名字下一条细轨，宽度 = 该智能体调用数 / 最活跃智能体 */
+.a .share { grid-column: 1 / -1; height: 2px; background: rgba(30, 60, 95, 0.5); margin-top: 2px; }
+.a .share i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); box-shadow: 0 0 5px rgba(74, 163, 255, 0.4); }
 
 /* 实时链路：智能体 → 网关 → 模型的快照回放舞台，右栏的主视觉；网关待机呼吸由画布绘制 */
 .route-body { position: relative; }

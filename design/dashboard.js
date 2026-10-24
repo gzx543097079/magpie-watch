@@ -136,9 +136,11 @@
                    ['缓存读', compact(today.cache_read)], ['缓存写', compact(today.cache_write)],
                    ['推理', compact(today.reasoning)]];
     const flow2 = [['失败', integer(today.errors) + ' / ' + pct(share(today.errors, today.calls))],
-                   ['重试', integer(today.retried)], ['会话', integer(today.sessionCount)],
-                   ['未计价', integer(today.unpriced)], ['credits', (today.credits || 0).toFixed(2)],
-                   ['计时', pct(share(today.timed, today.calls))]];
+                   ['重试', integer(today.retried)],
+                   ['会话', integer(today.sessionCount)],
+                   ['首字', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + 's' : '—'],
+                   ['速度', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' t/s' : '—'],
+                   ['未计价', integer(today.unpriced)]];
     [['flow1', flow1], ['flow2', flow2]].forEach(([id, list]) => {
       $(id).innerHTML = list.map(([k, v]) => `${k} <b>${v}</b>`).join('<i>·</i>');
     });
@@ -156,39 +158,95 @@
       '本周 ' + integer(week && week.calls) + ' 次 · 30 日 ' + integer(month && month.calls) + ' 次';
     $('today-foot2').textContent = today.credited != null ? '已计费 ' + today.credited + ' 次' : '';
 
-    // series 是整天的 24 个小时桶，末尾那些还没到的小时永远是 0；
-    // 去掉尾部空桶再取最后三个，才不会把三个空桶当成最近三小时。
+    // series 是整天的 24 个小时桶，末尾那些还没到的小时永远是 0；去尾画 24 小时节奏。
     const series = today.series || [];
     let end = series.length;
-    while (end > 3 && !series[end - 1].calls) end -= 1;
-    const hours = series.slice(0, end).slice(-3).reverse();
-    const rhMax = Math.max(1, ...(today.series || []).map((h) => h.calls || 0));
-    const box = $('recent-hours');
+    while (end > 1 && !series[end - 1].calls) end -= 1;
+    const hours = series.slice(0, end);
+    const maxCalls = Math.max(1, ...hours.map((h) => h.calls || 0));
+    const peak = hours.reduce((a, h) => ((h.calls || 0) > (a.calls || 0) ? h : a), hours[0] || {});
+    const box = $('rhythm');
     if (!box.dataset.ready) {
-      const title = el('span', null, '最近三小时');
-      title.dataset.key = 'title';
-      box.append(title);
+      const head = el('div', 'rhythm-head');
+      head.append(el('span', null, '24 小时节奏'), el('b'));
+      head.dataset.key = 'head';
+      box.append(head, el('div', 'rhythm-bars'));
       box.dataset.ready = '1';
     }
-    keyed(box, hours, (h) => h.label,
-      () => {
-        const row = el('div', 'rh');
-        const track = el('div', 'track');
-        track.append(el('i'));
-        row.append(el('b'), track, el('b'), el('em'));
-        return row;
-      },
-      (node, h) => {
-        const kids = node.children;
-        kids[0].textContent = h.label + ' 时';
-        kids[1].firstChild.style.width = share(h.calls || 0, rhMax) + '%';
-        kids[2].textContent = integer(h.calls) + ' 次';
-        kids[3].textContent = money(h.cost) + ' · 推理 ' + compact(h.reasoning);
+    const bars = box.querySelector('.rhythm-bars');
+    keyed(bars, hours, (h) => h.label,
+      () => el('i'),
+      (node, h, i) => {
+        const cur = i === hours.length - 1;
+        node.style.height = Math.max(3, share(h.calls || 0, maxCalls)) + '%';
+        node.className = cur ? 'cur' : ((h.calls || 0) ? '' : 'zero');
+        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost);
       });
+    box.querySelector('.rhythm-head b').textContent = hours.length
+      ? '峰值 ' + integer(peak.calls || 0) + ' 次 · ' + peak.label + ' 时'
+      : '';
   }
 
   /* ── 额度 ── */
-  function renderQuotas(quotas) {
+  /** 账号燃尽曲线：把 quotas/history 里当前窗口的剩余额度走势画成一条小折线。 */
+  function drawQuotaSpark(canvas, line) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (canvas.width !== Math.round(rect.width * dpr)) {
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    const pts = (line && line.points) || [];
+    if (pts.length < 2) return;
+    // 只画当前窗口（以最新一点的 start 为准），跨窗口拼接没有意义。
+    const start = pts[pts.length - 1].start;
+    const win = start ? pts.filter((p) => p.start === start) : pts;
+    if (win.length < 2) return;
+    const W = rect.width, H = rect.height;
+    const x = (i) => (i / (win.length - 1)) * (W - 2) + 1;
+    const y = (left) => H - 1 - (Math.max(0, Math.min(100, left)) / 100) * (H - 2);
+    ctx.beginPath();
+    win.forEach((p, i) => { if (i) ctx.lineTo(x(i), y(p.left)); else ctx.moveTo(x(i), y(p.left)); });
+    ctx.strokeStyle = 'rgba(111, 242, 255, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.lineTo(x(win.length - 1), H);
+    ctx.lineTo(x(0), H);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(47, 127, 214, 0.16)';
+    ctx.fill();
+    ctx.fillStyle = '#d9fdff';
+    ctx.beginPath();
+    ctx.arc(x(win.length - 1), y(win[win.length - 1].left), 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** 燃尽速度 → 估算用尽：只用当前窗口内的真实下降，重置先到就不估。 */
+  function burnEstimate(line) {
+    const pts = (line && line.points) || [];
+    if (pts.length < 2) return null;
+    const start = pts[pts.length - 1].start;
+    const win = (start ? pts.filter((p) => p.start === start) : pts).slice();
+    if (win.length < 2) return null;
+    const first = win[0], last = win[win.length - 1];
+    const hours = (new Date(last.at) - new Date(first.at)) / 3.6e6;
+    if (hours < 0.05 || first.left <= last.left) return null;
+    const rate = (first.left - last.left) / hours;      // 每小时烧掉的百分点
+    if (rate < 0.5) return null;                        // 几乎没在烧，估了也是噪声
+    const etaH = last.left / rate;
+    if (last.resetsAt) {
+      const resetH = (new Date(last.resetsAt) - Date.now()) / 3.6e6;
+      if (etaH >= resetH) return null;                  // 重置会先来
+    }
+    return { name: line.name, etaH };
+  }
+  const etaText = (h) => h < 1 ? Math.max(1, Math.round(h * 60)) + ' 分钟' : h < 48 ? h.toFixed(1) + ' 小时' : Math.round(h / 24) + ' 天';
+
+  function renderQuotas(quotas, history) {
     const accounts = quotas.data || [];
     // 整块右侧全给额度：按账号分组，每个账号列出它所有窗口，不折叠、不裁切。
     const groups = accounts.map((q) => {
@@ -220,7 +278,9 @@
         const head = el('h3');
         head.append(el('b'), el('i'), el('em'));
         // 行放在内层容器里：keyed 会清掉所有不认识的子节点，标题不能和它们同级。
-        box.append(head, el('div', 'q-rows'));
+        const spark = el('canvas', 'q-spark');
+        spark.dataset.key = 'spark';
+        box.append(head, spark, el('div', 'q-rows'));
         return box;
       },
       (node, g) => {
@@ -247,6 +307,22 @@
         // 在岗标记放在账号行尾，不占窗口行的位置。
         head.children[2].textContent = g.q.last ? '在岗' : g.wins.length + ' 窗口';
         head.children[2].classList.toggle('on', !!g.q.last);
+
+        // 燃尽曲线：从 history 找本账号点位最多的窗口线画在标题下方。
+        let sparkCanvas = node.querySelector('canvas.q-spark');
+        if (!sparkCanvas) {
+          sparkCanvas = el('canvas', 'q-spark');
+          sparkCanvas.dataset.key = 'spark';
+          node.insertBefore(sparkCanvas, node.querySelector('.q-rows'));
+        }
+        const rec = ((history && history.data) || []).find((h) => h.provider === g.q.provider && h.user === g.q.user);
+        let bestLine = null;
+        ((rec && rec.lines) || []).forEach((ln) => {
+          if (!bestLine || (ln.points || []).length > (bestLine.points || []).length) bestLine = ln;
+        });
+        drawQuotaSpark(sparkCanvas, bestLine);
+        g.eta = bestLine ? burnEstimate(bestLine) : null;
+        const acctEta = g.eta;
 
         keyed(node.querySelector('.q-rows'), g.wins, (w) => w.name,
           () => {
@@ -285,6 +361,7 @@
             } else if (w.display && !/^\s*\d+\s*\/\s*\d+\s+credits?\s*$/i.test(w.display)) {
               bits.push(w.display);
             }
+            if (acctEta && acctEta.name === w.name) bits.push('估算 ' + etaText(acctEta.etaH) + ' 用尽');
             if (w.holdsWhy) bits.push(WHY[w.holdsWhy] || w.holdsWhy);
             sub.textContent = bits.filter(Boolean).join(' · ');
           });
@@ -295,15 +372,19 @@
     const nearest = wins.filter((w) => w.resetsAt && !isNaN(new Date(w.resetsAt)))
       .sort((a, b) => new Date(a.resetsAt) - new Date(b.resetsAt))[0];
     const noWin = groups.filter((g) => !g.wins.length).length;
+    const fastest = shown.map((g) => g.eta).filter(Boolean).sort((a, b) => a.etaH - b.etaH)[0];
     $('quota-note').textContent = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 按余量升序';
     $('quota-foot').textContent = nearest ? '最近重置 · ' + resetText(nearest.resetsAt) : '';
     $('quota-foot').classList.toggle('soon',
       !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
-    $('quota-foot2').textContent = noWin ? '另有 ' + noWin + ' 个账号未上报窗口' : '全部账号均已上报窗口';
+    $('quota-foot2').textContent = noWin
+      ? '另有 ' + noWin + ' 个账号未上报窗口'
+      : (fastest ? '最快燃尽 · ' + fastest.name + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '全部账号均已上报窗口');
+    $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
   /* ── 智能体 ── */
-  function renderAgents(today) {
+  function renderAgents(today, traceRows) {
     // 行高只够四行，多出的智能体并进「另 N 个」，不做裁切。
     const all = [...(today.agents || [])].sort((a, b) => (b.cost || 0) - (a.cost || 0));
     const agents = all.slice(0, 3);
@@ -314,8 +395,22 @@
         errors: (acc.errors || 0) + (a.errors || 0)
       }), {}));
     }
+    // 最近活跃：以 trace 里该智能体最后一次真实触发的时刻为准。
+    const lastSeen = new Map();
+    (traceRows || []).forEach((r) => {
+      const prev = lastSeen.get(r.agent);
+      if (prev == null || r.at > prev) lastSeen.set(r.agent, r.at);
+    });
+    const maxCalls = Math.max(1, ...agents.map((a) => a.calls || 0));
     keyed($('agent-list'), agents, (a) => a.id || a.name,
-      () => { const row = el('div', 'a'); row.append(el('b'), el('em'), el('span')); return row; },
+      () => {
+        const row = el('div', 'a');
+        row.append(el('b'), el('em'), el('span'));
+        const share = el('div', 'share');
+        share.append(el('i'));
+        row.append(share);
+        return row;
+      },
       (node, a) => {
         node.children[0].textContent = mask(a.name || a.id);
         node.children[1].textContent = money(a.cost);
@@ -324,7 +419,10 @@
         if (a.decode_ms) bits.push(Math.round(a.decode_out / (a.decode_ms / 1000)) + ' t/s');
         if (a.errors) bits.push('失败 ' + a.errors);
         if (a.reasoning) bits.push('推理 ' + compact(a.reasoning));
+        const seen = lastSeen.get(a.id || a.name);
+        if (seen && a.id !== '__more') bits.push(agoText(Date.now() - seen) + '前活跃');
         node.children[2].textContent = bits.join(' · ');
+        node.children[3].firstChild.style.width = share(a.calls || 0, maxCalls) + '%';
       });
     if (!agents.length) $('agent-list').replaceChildren(el('div', 'empty', '等待智能体用量'));
     $('agent-foot').textContent = integer(today.calls) + ' 次 · ' + money(today.cost);
@@ -1300,10 +1398,10 @@
 
   /* ── 主循环 ── */
   function paint(bundle) {
-    const { today, week, month, quotas } = bundle;
+    const { today, week, month, quotas, history } = bundle;
     renderToday(today, week, month);
-    renderQuotas(quotas);
-    renderAgents(today);
+    renderQuotas(quotas, history);
+    renderAgents(today, readLive(bundle.trace));
     renderRouteStage(bundle);
     // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
@@ -1315,15 +1413,17 @@
 
   async function refresh() {
     try {
-      const [today, week, month, quotas, trace] = await Promise.all([
+      const [today, week, month, quotas, trace, history] = await Promise.all([
         get('/v1/magpie/usage?period=today'),
         get('/v1/magpie/usage?period=7d'),
         get('/v1/magpie/usage?period=30d'),
         get('/v1/magpie/quotas'),
-        get('/v1/magpie/trace')
+        get('/v1/magpie/trace'),
+        // 燃尽曲线数据：单独容错——拿不到只是少画一条线，不算离线。
+        get('/v1/magpie/quotas/history').catch(() => null)
       ]);
       online = true;
-      lastGood = { today, week, month, quotas, trace, at: Date.now() };
+      lastGood = { today, week, month, quotas, trace, history, at: Date.now() };
       paint(lastGood);
     } catch (error) {
       online = false;
