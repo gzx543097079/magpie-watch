@@ -184,8 +184,8 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列三段（今日 / 实时往返 / 智能体），右栏八列整块留给账号额度。 */
-  grid-template-rows: minmax(0, 26fr) minmax(0, 55fr) minmax(0, 19fr);
+  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体）。 */
+  grid-template-rows: minmax(0, 24fr) minmax(0, 60fr) minmax(0, 16fr);
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -555,155 +555,9 @@ main {
 .a b, .a em { line-height: 15px; }
 .a span { grid-column: 1 / -1; color: var(--dim); font-size: 9px; line-height: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 实时数据流：KPI 条 + 单次耗时轨迹 + 分布条 + 最近路由表，一格一块 */
-.live-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1.12fr) minmax(0, 0.88fr) auto;
-  grid-template-areas:
-    "kpi kpi"
-    "chart models"
-    "chart folders"
-    "table table";
-  gap: 11px 30px;
-  min-height: 0;
-}
-
-/* KPI 条：一行读数，数字是这块的主语 */
-.live-kpi {
-  grid-area: kpi;
-  display: flex;
-  gap: 0;
-  border-top: 1px solid var(--hair);
-  border-bottom: 1px solid var(--hair);
-  padding: 6px 0;
-}
-.live-kpi > div {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0 14px;
-  border-left: 1px solid var(--hair);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.live-kpi > div:first-child { padding-left: 0; border-left: 0; }
-.live-kpi b {
-  font-family: var(--mono);
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-  color: #ffffff;
-  text-shadow: 0 0 16px rgba(111, 242, 255, 0.5);
-}
-.live-kpi b small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 2px; letter-spacing: 0; text-shadow: none; }
-.live-kpi span { color: var(--dim); font-size: 9px; letter-spacing: 0.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.live-kpi > div.bad b { color: var(--void); text-shadow: 0 0 14px rgba(255, 122, 122, 0.65); }
-
-/* 单次耗时轨迹 */
-.live-chart { grid-area: chart; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.live-chart-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--dim);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  margin-bottom: 4px;
-}
-.live-chart-head span:last-child { color: var(--dim2); letter-spacing: 0.03em; }
-.live-chart canvas { flex: 1; width: 100%; min-height: 0; display: block; }
-
-/* 分布条：一行一个主体，条与数字同排 */
-.live-block { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.live-block.models { grid-area: models; }
-.live-block.folders { grid-area: folders; }
-.live-block > h3 {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0 0 4px;
-  font-size: 9px;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  color: var(--dim);
-}
-.live-block > h3 em { font-style: normal; color: var(--dim2); letter-spacing: 0.03em; }
-.bars { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
-.bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; min-width: 0; }
-.bar-name {
-  display: block;
-  color: var(--ink);
-  font-size: 10px;
-  line-height: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.bar-val { font-family: var(--mono); color: var(--muted); font-size: 9.5px; white-space: nowrap; }
-.bar-val b { color: var(--ink); font-weight: 500; }
-.bar-track { grid-column: 1 / -1; height: 4px; background: #12233a; position: relative; overflow: hidden; }
-.bar-track i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--mark-soft), var(--live));
-  box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
-}
-.bar.warn .bar-track i { background: linear-gradient(90deg, #b44a4a, var(--void)); box-shadow: 0 0 8px rgba(255, 122, 122, 0.5); }
-
-/* 最近路由表：等宽对齐，一行一条真实调用 */
-.live-table { grid-area: table; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.lt-head, .lt-row {
-  display: grid;
-  grid-template-columns: 62px minmax(0, 0.9fr) minmax(0, 1.25fr) 58px 58px 52px;
-  gap: 10px;
-  align-items: baseline;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  line-height: 14px;
-  white-space: nowrap;
-}
-.lt-head {
-  color: var(--dim2);
-  font-size: 8.5px;
-  letter-spacing: 0.1em;
-  padding-bottom: 3px;
-  border-bottom: 1px solid var(--hair);
-}
-.lt-head span:not(:first-child), .lt-row span:not(:first-child) { text-align: right; }
-.lt-head span:nth-child(2), .lt-head span:nth-child(3),
-.lt-row span:nth-child(2), .lt-row span:nth-child(3) { text-align: left; }
-.lt-rows { flex: 1; min-height: 0; overflow: hidden; }
-.lt-row { color: var(--muted); padding: 1px 0; position: relative; overflow: hidden; }
-.lt-row > span { overflow: hidden; text-overflow: ellipsis; }
-.lt-row .t { color: var(--dim); }
-.lt-row .m { color: var(--ink); }
-.lt-row .ms b { color: var(--ink); font-weight: 500; }
-.lt-row.bad .st, .lt-row.bad .ms b { color: var(--void); text-shadow: 0 0 8px rgba(255, 122, 122, 0.5); }
-/* 在途请求：耗时一格呼吸，直到上游返回 */
-.lt-row.wip .ms b { animation: breath 1.6s ease-in-out infinite; color: #e2fbff; }
-@keyframes breath {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-/* 签名动作：新路由落表，一道窄青光从左到右扫过这一行 */
-.lt-row::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  background: linear-gradient(90deg, transparent, rgba(111, 242, 255, 0.32), transparent);
-  background-size: 34% 100%;
-  background-repeat: no-repeat;
-  background-position: -50% 0;
-}
-.lt-row.fresh::after { animation: sweepRow 0.95s ease-out; }
-@keyframes sweepRow {
-  0% { background-position: -50% 0; opacity: 1; }
-  100% { background-position: 150% 0; opacity: 0; }
-}
+/* 实时链路：智能体 → 网关 → 模型的快照回放舞台，右栏的主视觉；网关待机呼吸由画布绘制 */
+.route-body { position: relative; }
+.route-body canvas { width: 100%; height: 100%; display: block; }
 
 .mod-foot .bad { color: var(--void); }
 .mod-foot .soon { color: var(--amber); }
