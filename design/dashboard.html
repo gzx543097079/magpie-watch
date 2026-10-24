@@ -55,36 +55,11 @@
       <h2><span class="tt">实时链路 <i class="code">LIVE.ROUTE</i></span><small id="route-note">智能体 → 网关 → 模型 · 4 秒快照回放</small></h2>
       <div class="body route-body">
         <canvas id="route-canvas"></canvas>
-        <i class="gw-ring" aria-hidden="true"></i>
       </div>
       <div class="mod-foot"><span id="route-foot">等待第一条路由</span><span id="route-foot2"></span></div>
     </section>
 
-    <section class="mod live-mod c8 r3" id="live-mod">
-      <h2><span class="tt">实时数据流 <i class="code">LIVE.STREAM</i></span><small id="live-note">最近 60 条路由 · 4 秒刷新</small></h2>
-      <div class="body live-body">
-        <div class="live-kpi" id="live-kpi"></div>
-        <div class="live-chart">
-          <div class="live-chart-head"><span>单次耗时</span><span id="chart-note"></span></div>
-          <canvas id="live-canvas"></canvas>
-        </div>
-        <div class="live-block models">
-          <h3>模型分布 <em>调用 · 中位耗时</em></h3>
-          <div class="bars" id="model-bars"></div>
-        </div>
-        <div class="live-block folders">
-          <h3>项目分布 <em>调用 · 输出 tok</em></h3>
-          <div class="bars" id="folder-bars"></div>
-        </div>
-        <div class="live-table">
-          <div class="lt-head"><span>时间</span><span>智能体</span><span>模型</span><span>耗时</span><span>首字</span><span>输出</span></div>
-          <div class="lt-rows" id="live-rows"></div>
-        </div>
-      </div>
-      <div class="mod-foot"><span id="live-foot"></span><span id="live-foot2"></span></div>
-    </section>
-
-    <section class="mod c8 r4">
+    <section class="mod c8 r3">
       <h2><span class="tt">智能体 <i class="code">AGENTS</i></span><small>成本 · 延迟</small></h2>
       <div class="body agents-wide" id="agent-list"></div>
       <div class="mod-foot"><span id="agent-foot"></span></div>

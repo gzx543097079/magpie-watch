@@ -3,8 +3,6 @@
 (() => {
   'use strict';
 
-  const PAL = ['#3987e5', '#d95926', '#199e70', '#7d6bd8', '#c9a227', '#4a8f9e'];
-  const KIND = { system: '系统提示', tools: '工具定义', memory: '记忆', files: '文件', results: '工具结果', chat: '对话' };
   const WHY = { log: '读自日志', clock: '估算', low: '低置信' };
   const POLL_MS = 4000;
 
@@ -332,7 +330,7 @@
     $('agent-foot').textContent = integer(today.calls) + ' 次 · ' + money(today.cost);
   }
 
-  /* ── 实时数据流：最近 60 条路由的读数、耗时轨迹、分布与明细 ── */
+  /* ── 链路共享读数：trace 路由整理与统计 ── */
   const median = (list) => {
     if (!list.length) return null;
     const s = [...list].sort((a, b) => a - b);
@@ -341,11 +339,11 @@
   };
   const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
 
-  /* 签名动作：新路由落表时 STREAM 机柜四角亮一下。首轮不闪，之后每来一条闪一次。 */
+  /* 签名动作：新路由到达时链路机柜四角亮一下。首轮不闪，之后每来一条闪一次。 */
   let lastRouteKey = null;
   let blipTimer = 0;
-  function blipStream() {
-    const mod = $('live-mod');
+  function blipRoute() {
+    const mod = $('route-mod');
     mod.classList.remove('blip');
     void mod.offsetWidth;
     mod.classList.add('blip');
@@ -388,218 +386,7 @@
     return rows;
   }
 
-  /** 一行分布条：主体名、主读数、副读数、占比条。 */
-  function renderBars(box, items, unitText) {
-    // 块高有限，多出来的主体并进最后一行，绝不把行压扁。
-    // 行距按真实值算：名 12px + 名条间距 2px + 条 4px + 行间 4px = 22px/行，另留标题 ~20px。
-    // 下限 1：块太矮时宁可合并，也不溢出（实测块高 45–55px 只容 1 行）。
-    const fit = Math.max(1, Math.floor((box.parentElement.clientHeight - 20) / 22) || 5);
-    if (items.length > fit) {
-      const rest = items.slice(fit - 1);
-      const merged = rest.reduce((a, d) => ({ calls: a.calls + d.calls, weight: a.weight + d.weight }), { calls: 0, weight: 0 });
-      items = items.slice(0, fit - 1).concat([{
-        name: '另 ' + rest.length + ' 个', calls: merged.calls, weight: merged.weight,
-        max: items[0].max, warn: rest.some((d) => d.warn), note: rest.length + ' 项合计'
-      }]);
-    }
-    keyed(box, items, (d) => d.name,
-      () => {
-        const row = el('div', 'bar');
-        const name = el('span', 'bar-name');
-        const val = el('span', 'bar-val');
-        const track = el('div', 'bar-track');
-        track.append(el('i'));
-        row.append(name, val, track);
-        return row;
-      },
-      (node, d) => {
-        node.children[0].textContent = d.name;
-        node.children[1].replaceChildren(el('b', null, integer(d.calls)), document.createTextNode(' · ' + unitText(d)));
-        node.children[2].firstChild.style.width = Math.max(2, share(d.weight, d.max)) + '%';
-        node.classList.toggle('warn', !!d.warn);
-      });
-  }
-
-  function renderLive(bundle) {
-    const rows = readLive(bundle.trace);
-    const done = rows.filter((r) => r.done);
-    const running = rows.filter((r) => !r.done);
-    const bad = rows.filter((r) => r.bad);
-    const okMs = done.filter((r) => r.ms).map((r) => r.ms);
-
-    /* KPI 条 */
-    const kpis = [
-      { k: '在途', v: String(running.length), note: running.length ? '等上游返回' : '网关待机', bad: false },
-      { k: '中位耗时', v: secs(median(okMs)), note: okMs.length ? okMs.length + ' 条已完成' : '暂无完成', bad: false },
-      { k: '首字中位', v: secs(median(done.filter((r) => r.ttft).map((r) => r.ttft))), note: 'TTFT', bad: false },
-      { k: '输出 tok', v: compact(done.reduce((s, r) => s + r.out, 0)), note: '最近 ' + rows.length + ' 条', bad: false },
-      { k: '失败', v: String(bad.length), note: bad.length ? (bad[0].why === '失败' ? '有请求失败' : '首条 ' + bad[0].why) : '全部成功', bad: bad.length > 0 }
-    ];
-    keyed($('live-kpi'), kpis, (d) => d.k,
-      () => { const d = el('div'); d.append(el('b'), el('span')); return d; },
-      (node, d) => {
-        const b = node.children[0];
-        if (b.textContent !== d.v) { b.textContent = d.v; flash(b); }
-        node.children[1].textContent = d.k + ' · ' + d.note;
-        node.classList.toggle('bad', d.bad);
-      });
-
-    /* 模型 / 项目分布 */
-    const group = (list, pick) => {
-      const map = new Map();
-      list.forEach((r) => {
-        const name = pick(r);
-        if (!map.has(name)) map.set(name, { name, calls: 0, ms: [], out: 0, bad: 0 });
-        const g = map.get(name);
-        g.calls += 1;
-        g.out += r.out;
-        if (r.bad) g.bad += 1;
-        if (r.ms) g.ms.push(r.ms);
-      });
-      return [...map.values()].sort((a, b) => b.calls - a.calls).slice(0, 5);
-    };
-    const models = group(rows, (r) => r.model).map((g) => ({
-      name: g.name, calls: g.calls, weight: g.calls, max: 0, warn: g.bad > 0,
-      note: secs(median(g.ms))
-    }));
-    const folders = group(rows, (r) => r.folder).map((g) => ({
-      name: g.name, calls: g.calls, weight: g.out, max: 0, warn: false,
-      note: compact(g.out) + ' tok'
-    }));
-    [models, folders].forEach((list) => {
-      const max = Math.max(1, ...list.map((d) => d.weight));
-      list.forEach((d) => { d.max = max; });
-    });
-    renderBars($('model-bars'), models, (d) => d.note);
-    renderBars($('folder-bars'), folders, (d) => d.note);
-
-    /* 耗时轨迹：一根一根竖线，高度是真实 ms，失败的那根转红。 */
-    drawSpend($('live-canvas'), rows);
-    $('chart-note').textContent = okMs.length
-      ? '最近 ' + rows.length + ' 条 · 峰值 ' + secs(Math.max(...okMs))
-      : '等待第一条调用';
-
-    /* 明细表：最新的在最上面，只显示放得下的行数（不设下限，放不下就少显示，不切半行）。 */
-    const box = $('live-rows');
-    const rowH = 15;
-    const fits = Math.max(1, Math.floor((box.clientHeight || 90) / rowH));
-    const latest = rows.slice(-fits).reverse();
-    keyed(box, latest, (r) => r.id,
-      () => {
-        // fresh 只在节点新建（= 新路由首次进表）时挂上，扫光播一次。
-        const row = el('div', 'lt-row fresh');
-        ['t', 'ag', 'md', 'ms', 'tt', 'out'].forEach((c) => row.append(el('span', c)));
-        return row;
-      },
-      (node, r) => {
-        const [t, ag, md, ms, tt, out] = node.children;
-        t.textContent = r.label;
-        ag.textContent = mask(r.agent);
-        ag.title = r.folder;
-        md.textContent = r.model;
-        md.title = r.provider + (r.tries > 1 ? ' · ' + r.tries + ' 次尝试' : '');
-        if (r.done) {
-          ms.replaceChildren(el('b', null, secs(r.ms)));
-        } else {
-          ms.replaceChildren(el('b', null, secs(r.elapsed)), document.createTextNode(' …'));
-        }
-        tt.textContent = r.done ? secs(r.ttft) : '—';
-        out.textContent = r.done ? compact(r.out) : '—';
-        node.classList.toggle('bad', r.bad);
-        node.classList.toggle('wip', !r.done);
-        if (r.bad) md.title = r.why + (r.tries > 1 ? ' · ' + r.tries + ' 次尝试' : '');
-      });
-
-    /* 新路由落表 + 失败亮红：角标的颜色说的都是真状态。 */
-    const newestKey = rows.length ? rows[rows.length - 1].id : null;
-    if (newestKey && newestKey !== lastRouteKey) {
-      if (lastRouteKey) blipStream();
-      lastRouteKey = newestKey;
-    }
-    $('live-mod').classList.toggle('alert', bad.length > 0);
-
-    /* 注脚 */
-    const newest = rows.length ? Math.max(...rows.map((r) => r.at)) : null;
-    $('live-foot').textContent = running.length
-      ? running.length + ' 条在途' + (bad.length ? ' · ' + bad.length + ' 条失败' : '')
-      : '网关待机 · 最近 ' + rows.length + ' 条路由';
-    $('live-foot').classList.toggle('bad', bad.length > 0);
-    $('live-foot2').textContent = newest
-      ? '最新一条 ' + agoText(Date.now() - newest) + '前'
-      : '等待调用';
-    $('live-note').textContent = '最近 ' + rows.length + ' 条路由 · 4 秒刷新';
-  }
-
-  /** 耗时轨迹：等宽竖条 + 中位线，失败条目用红色，不做补间动画。 */
-  function drawSpend(canvas, rows) {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const W = rect.width, H = rect.height;
-    ctx.clearRect(0, 0, W, H);
-    if (!rows.length) return;
-
-    const pad = 2;
-    const maxMs = Math.max(1000, ...rows.map((r) => r.ms || r.elapsed || 0));
-    const n = rows.length;
-    const step = W / n;
-    const barW = Math.max(1, Math.min(9, step - 1.6));
-    const yOf = (ms) => H - pad - (ms / maxMs) * (H - pad * 2);
-
-    // 示波器刻度：三条极淡的横线，说明这里是仪表而不是画布。
-    ctx.strokeStyle = 'rgba(70, 120, 170, 0.14)';
-    ctx.lineWidth = 1;
-    [0.25, 0.5, 0.75].forEach((f) => {
-      ctx.beginPath();
-      ctx.moveTo(0, Math.round(pad + (H - pad * 2) * f) + 0.5);
-      ctx.lineTo(W, Math.round(pad + (H - pad * 2) * f) + 0.5);
-      ctx.stroke();
-    });
-
-    // 基线：一条极淡的底边，说明这里是 0。
-    ctx.strokeStyle = 'rgba(39, 64, 90, 0.9)';
-    ctx.beginPath();
-    ctx.moveTo(0, H - 0.5);
-    ctx.lineTo(W, H - 0.5);
-    ctx.stroke();
-
-    rows.forEach((r, i) => {
-      const ms = r.ms || r.elapsed || 0;
-      const x = i * step + (step - barW) / 2;
-      const y = yOf(ms);
-      const g = ctx.createLinearGradient(0, y, 0, H);
-      if (r.bad) { g.addColorStop(0, '#ff8f8f'); g.addColorStop(1, 'rgba(255,122,122,0.16)'); }
-      else if (!r.done) { g.addColorStop(0, '#eaf4ff'); g.addColorStop(1, 'rgba(111,242,255,0.22)'); }
-      else { g.addColorStop(0, '#6ff2ff'); g.addColorStop(1, 'rgba(47,127,214,0.18)'); }
-      ctx.fillStyle = g;
-      ctx.shadowColor = r.bad ? 'rgba(255, 122, 122, 0.65)' : 'rgba(111, 242, 255, 0.55)';
-      ctx.shadowBlur = 5;
-      ctx.fillRect(x, y, barW, H - pad - y);
-      // 顶端一点亮，让每根条的读数一眼可见。
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = r.bad ? '#ffd0d0' : 'rgba(234, 250, 255, 0.95)';
-      ctx.fillRect(x, y, barW, 1.4);
-    });
-
-    // 中位线：整块唯一的一条横线，用来说明「平时多快」。
-    const mid = median(rows.filter((r) => r.ms).map((r) => r.ms));
-    if (mid) {
-      const y = yOf(mid);
-      ctx.strokeStyle = 'rgba(183, 200, 220, 0.4)';
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(W, y + 0.5);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-  }
-
-  /* ── 实时链路：智能体 → 网关 → 模型，回复原路返回 ──
+  /**   /* ── 实时链路：智能体 → 网关 → 模型，回复原路返回 ──
      trace 是 4 秒快照，不是逐 token 流：每条真实路由在首次出现时回放一次往返，
      在途路由停在模型处脉冲等待，快照确认完成后才放行回程。空闲不伪造流量。 */
   const routeReduceQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -608,6 +395,7 @@
   const routeTrips = new Map();   // route id -> 进行中的行程
   const routeSpent = new Set();   // 已回放过的 route id：同一条路由只播一次
   const routeNodes = { agents: new Map(), models: new Map() }; // name -> { state: in|live|out, since, y }
+  const routeRipples = [];        // 包裹进出网关的涟漪
   let routeBoot = false;          // 首帧只回放最新几条，历史路由不补播
   let routeRaf = 0;
   let routeLastTs = 0;
@@ -680,6 +468,18 @@
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
     ctx.shadowBlur = 7;
+    // 外圈柔光：一次更宽更淡的描边，给彗星体积感。
+    ctx.globalAlpha = 0.09;
+    ctx.lineWidth = width * 2.8;
+    ctx.strokeStyle = color;
+    {
+      const [sx, sy] = cubicAt(p, t0);
+      const [ex, ey] = cubicAt(p, t1);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
     // 尾巴：淡 → 亮两段，头部一颗亮点。
     for (let i = 0; i < steps; i += 1) {
       const a = t0 + (t1 - t0) * (i / steps);
@@ -717,6 +517,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
     const W = rect.width, H = rect.height;
+    const running = rows.filter((r) => !r.done).length;
+    const stageIdle = routeTrips.size === 0 && running === 0;
 
     // 拓扑：登记表驱动——新节点淡入、离场节点淡出、位置缓动重排；
     // 活跃行程的端点在 syncRouteNodes 里优先占位，这里只读登记表。
@@ -758,6 +560,15 @@
     const agentPos = layout(routeNodes.agents);
     const modelPos = layout(routeNodes.models);
 
+    // 网关底光：待机时呼吸，忙碌时恒定微光——机舱的核心总有一点亮。
+    const gwGlow = stageIdle ? (reduce ? 0.10 : 0.10 + 0.06 * Math.sin(now / 700)) : 0.08;
+    const gwGlowR = Math.min(W, H) * 0.42;
+    const underglow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, gwGlowR);
+    underglow.addColorStop(0, 'rgba(111, 242, 255, ' + gwGlow.toFixed(3) + ')');
+    underglow.addColorStop(1, 'rgba(111, 242, 255, 0)');
+    ctx.fillStyle = underglow;
+    ctx.fillRect(W / 2 - gwGlowR, H / 2 - gwGlowR, gwGlowR * 2, gwGlowR * 2);
+
     // 链路底图：虚线，随节点一起淡入淡出。
     ctx.save();
     ctx.setLineDash([2, 5]);
@@ -789,9 +600,26 @@
     });
     ctx.restore();
 
+    // 待机声呐：没有触发的智能体和模型时，网关自己一圈圈向外呼吸。
+    if (stageIdle && !reduce) {
+      for (let i = 0; i < 2; i += 1) {
+        const p = ((now / 2600) + i * 0.5) % 1;
+        const r = gwW / 2 + 6 + p * Math.min(H, W) * 0.32;
+        ctx.save();
+        ctx.globalAlpha = (1 - p) * 0.34;
+        ctx.strokeStyle = ROUTE_C.request;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。端点坐标取节点当前位置，重排时彗星跟着走。
     const activeAgents = new Set(), activeModels = new Set();
     let parkedCount = 0;
+    let transit = 0;
     routeTrips.forEach((trip) => {
       const an = routeNodes.agents.get(trip.agent);
       const mn = routeNodes.models.get(trip.model);
@@ -804,11 +632,16 @@
       if (trip.phase === 'req1') {
         const t = Math.min(1, elapsed / (ROUTE_T.req1 * speed));
         activeAgents.add(trip.agent);
+        transit += 1;
         drawRouteComet(ctx, leg1, Math.max(0, t - 0.3), t, trip.color, trip.width);
-        if (t >= 1) { trip.phase = 'req2'; trip.startedAt = now; }
+        if (t >= 1) {
+          trip.phase = 'req2'; trip.startedAt = now;
+          routeRipples.push({ x: gwX, y: H / 2, at: now, color: trip.color });
+        }
       } else if (trip.phase === 'req2') {
         const t = Math.min(1, elapsed / (ROUTE_T.req2 * speed));
         activeAgents.add(trip.agent);
+        transit += 1;
         drawRouteComet(ctx, leg2, Math.max(0, t - 0.3), t, trip.color, trip.width);
         if (t >= 1) { trip.phase = trip.park ? 'parked' : 'res1'; trip.startedAt = now; }
       } else if (trip.phase === 'parked') {
@@ -833,14 +666,19 @@
         ctx.restore();
       } else if (trip.phase === 'res1') {
         activeModels.add(trip.model);
+        transit += 1;
         const t = Math.min(1, elapsed / (ROUTE_T.res1 * speed));
         const back = [leg2[6], leg2[7], leg2[4], leg2[5], leg2[2], leg2[3], leg2[0], leg2[1]];
         drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
-        if (t >= 1) { trip.phase = 'res2'; trip.startedAt = now; }
+        if (t >= 1) {
+          trip.phase = 'res2'; trip.startedAt = now;
+          routeRipples.push({ x: gwX + gwW, y: H / 2, at: now, color: trip.color });
+        }
       } else if (trip.phase === 'res2') {
         const t = Math.min(1, elapsed / (ROUTE_T.res2 * speed));
         const back = [leg1[6], leg1[7], leg1[4], leg1[5], leg1[2], leg1[3], leg1[0], leg1[1]];
         drawRouteComet(ctx, back, Math.max(0, t - 0.3), t, trip.color, trip.width);
+        transit += 1;
         activeAgents.add(trip.agent);
         if (t >= 1) { trip.phase = 'done'; trip.startedAt = now; }
       } else if (trip.phase === 'done') {
@@ -859,6 +697,21 @@
         }
       }
     });
+
+    // 涟漪：包裹进出网关的一圈水波。
+    for (let i = routeRipples.length - 1; i >= 0; i -= 1) {
+      const rp = routeRipples[i];
+      const k = (now - rp.at) / 520;
+      if (k >= 1) { routeRipples.splice(i, 1); continue; }
+      ctx.save();
+      ctx.globalAlpha = 0.5 * (1 - k);
+      ctx.strokeStyle = rp.color;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, 3 + 16 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // 芯片：智能体 / 网关 / 模型。智能体名按遮蔽设置渲染。
     const agentCalls = new Map(), modelMs = new Map();
@@ -884,9 +737,9 @@
       drawRouteChip(ctx, modelX, y - chipH / 2, modelW, chipH,
         name, secs(median(modelMs.get(name) || [])), ROUTE_C.response, activeModels.has(name), alpha);
     });
-    const running = rows.filter((r) => !r.done).length;
     drawRouteChip(ctx, gwX, H / 2 - chipH / 2, gwW, chipH, 'MAGPIE 网关',
-      '今日 ' + integer(todayCalls) + ' · 在途 ' + running, ROUTE_C.request, parkedCount > 0 || running > 0);
+      '今日 ' + integer(todayCalls) + ' · 在途 ' + running,
+      ROUTE_C.request, parkedCount > 0 || running > 0 || transit > 0);
   }
 
   /** 舞台主循环：有移动包 30fps，只剩停泊 8fps；节点淡入淡出与重排期间保持循环，落地闪放完才停帧。 */
@@ -908,15 +761,22 @@
         if (n.state !== 'live') active = true;
       }));
     }
-    if (!active && !routeLayoutBusy) {
+    // 待机呼吸：没有触发的智能体和模型时，网关自己做声呐呼吸，循环保持低频运转。
+    const breathing = routeTick.idle && !routeReduceQuery.matches;
+    if (!active && !breathing && !routeLayoutBusy && !routeRipples.length) {
       routeRaf = 0;
       drawRouteStage(ts, rows, routeTick.todayCalls || 0);
       return;
     }
-    const minDelta = moving ? 1000 / 30 : 1000 / 8;
+    const minDelta = moving ? 1000 / 30 : breathing ? 1000 / 24 : 1000 / 8;
     if (ts - routeLastTs >= minDelta) {
       routeLastTs = ts;
-      drawRouteStage(ts, rows, routeTick.todayCalls || 0);
+      try {
+        drawRouteStage(ts, rows, routeTick.todayCalls || 0);
+      } catch (err) {
+        // 画布一帧失败不让整条显示链停摆：记到控制台，下一帧继续。
+        console.warn('route stage frame error:', err);
+      }
     }
     routeRaf = requestAnimationFrame(routeTick);
   }
@@ -989,19 +849,29 @@
       routeSpent.add(victim[0]);
     }
 
+    // 签名动作：新路由到达时链路机柜四角亮一下；同时开程回放。
+    const newestKey = rows.length ? rows[rows.length - 1].id : null;
+    if (newestKey && newestKey !== lastRouteKey) {
+      if (lastRouteKey) blipRoute();
+      lastRouteKey = newestKey;
+    }
+
     const running = rows.filter((r) => !r.done).length;
-    const body = document.querySelector('.route-body');
     const idle = !routeTrips.size && !running;
-    body.classList.toggle('idle', idle);
-    body.classList.toggle('busy', !idle);
+    // 页脚吸收原实时数据流的关键读数：在途 / 中位耗时 / 失败。
+    const okMsList = rows.filter((r) => r.done && r.ms).map((r) => r.ms);
+    const badCount = rows.filter((r) => r.bad).length;
     $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐 token 观测';
-    $('route-foot2').textContent = running
-      ? '在途 ' + running + ' 条 · 等上游返回'
-      : (rows.length ? '网关待机 · 最近 ' + rows.length + ' 条路由' : '等待第一条路由');
+    $('route-foot2').textContent = !rows.length
+      ? '等待第一条路由'
+      : idle
+        ? '网关待机 · 中位 ' + secs(median(okMsList)) + ' · 最近 ' + rows.length + ' 条'
+        : '在途 ' + running + ' · 中位 ' + secs(median(okMsList)) + (badCount ? ' · 失败 ' + badCount : '');
     $('route-note').textContent = '智能体 → 网关 → 模型 · 4 秒快照回放';
 
     routeTick.rows = rows;
     routeTick.todayCalls = (bundle.today && bundle.today.calls) || 0;
+    routeTick.idle = idle;
     if (reduce) {
       if (routeRaf) { cancelAnimationFrame(routeRaf); routeRaf = 0; }
       drawRouteStage(now, rows, routeTick.todayCalls);
@@ -1020,7 +890,6 @@
     renderQuotas(quotas);
     renderAgents(today);
     renderRouteStage(bundle);
-    renderLive(bundle);
     // 顶栏：网关状态灯 + 时钟；快照时间收进页脚。
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
     $('source-note').textContent = '数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽 · ' +
