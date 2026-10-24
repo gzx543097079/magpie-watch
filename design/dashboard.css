@@ -16,7 +16,7 @@
   --void: #ff7a7a;
   --amber: #ffbc7d;
   --surface: #020912;
-  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --mono: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
   /* 机柜四角角标的颜色：常态青光，blip 时提亮，离线时转红 */
   --tick-c: rgba(111, 242, 255, 0.62);
 }

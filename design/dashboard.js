@@ -111,7 +111,7 @@
   function renderToday(today, week, month, daily) {
     put('cost', money(today.cost));
     $('today-note').textContent =
-      integer(today.calls) + ' 次 · ' + compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0)) + ' tok';
+      integer(today.calls) + ' 次 · ' + compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0)) + ' 令牌';
 
     // 缓存命中率：命中读 / (新输入 + 命中读)。这是唯一能说明「省了多少」的比率。
     const hit = today.cache_read || 0;
@@ -129,8 +129,8 @@
     const dsCalls = ds.reduce((s, m) => s + (m.calls || 0), 0);
 
     // 迷你仪表：生成速度 / 首字。
-    put('mini-speed', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' t/s' : '—');
-    put('mini-ttft', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + 's' : '—');
+    put('mini-speed', today.decode_ms ? Math.round(today.decode_out / (today.decode_ms / 1000)) + ' 字/秒' : '—');
+    put('mini-ttft', today.timed ? (today.ttft_ms / today.timed / 1000).toFixed(1) + ' 秒' : '—');
 
     // 流程一行：只用一维读数，失败带比率（推理含在输出内，不重复列）。
     const flow = [['输入', compact(today.input)], ['输出', compact(today.output)],
@@ -141,7 +141,7 @@
 
     const cells = [
       ['本周', money(week && week.cost)], ['30 日', money(month && month.cost)],
-      ['总 tok', compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0))],
+      ['令牌总量', compact((today.input || 0) + (today.output || 0) + (today.cache_read || 0))],
       ['等价', ds.length ? '$' + usd.toFixed(usd < 1 ? 3 : 2) : '—']
     ];
     keyed($('cells'), cells, ([k]) => k,
@@ -210,6 +210,11 @@
     return { name: line.name, etaH };
   }
   const etaText = (h) => h < 1 ? Math.max(1, Math.round(h * 60)) + ' 分钟' : h < 48 ? h.toFixed(1) + ' 小时' : Math.round(h / 24) + ' 天';
+  /* 窗口名中文化：网关返回的是 5 hours / 7 days / Total 这类英文名，展示层映射成中文；
+     没映射的（新窗口类型）原样显示，数据关联始终用原始名。 */
+  const WIN_CN = { '5 hours': '5 小时', '7 days': '7 天', '1 day': '1 天', '24 hours': '24 小时',
+                   '30 days': '30 天', '1 week': '1 周', '1 month': '1 月', 'total': '总量', 'Total': '总量' };
+  const winName = (n) => WIN_CN[n] || n;
 
   function renderQuotas(quotas, history) {
     const accounts = quotas.data || [];
@@ -293,7 +298,7 @@
         // 燃料计取最紧窗口；其余窗口折进小字行。
         const lead = g.wins[0];
         bar.style.width = share(lead.remaining || 0, 100) + '%';
-        main.children[0].textContent = lead.name || '额度';
+        main.children[0].textContent = winName(lead.name) || '额度';
         main.children[1].textContent = lead.remaining <= 0
           ? '0%'
           : (typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—'));
@@ -310,10 +315,10 @@
         // 小字行：其余窗口「名 剩余」串 + 估算 + 占用，一行收拢。
         const bits = [];
         g.wins.slice(1).forEach((w) => {
-          bits.push(w.name + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
+          bits.push(winName(w.name) + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
         });
         if (g.eta && g.eta.name === lead.name) bits.push('估算 ' + etaText(g.eta.etaH) + ' 用尽');
-        if (lead.holds && lead.holds.tokens) bits.push(compact(lead.holds.tokens) + ' tok 已占');
+        if (lead.holds && lead.holds.tokens) bits.push(compact(lead.holds.tokens) + ' 令牌已占');
         sub.textContent = bits.join(' · ');
       });
     if (!groups.length) $('quota-list').replaceChildren(el('div', 'empty', '等待账号额度'));
@@ -329,7 +334,7 @@
       !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
     $('quota-foot2').textContent = noWin
       ? '另有 ' + noWin + ' 个账号未上报窗口'
-      : (fastest ? '最快燃尽 · ' + fastest.name + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '');
+      : (fastest ? '最快燃尽 · ' + winName(fastest.name) + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '');
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
@@ -365,8 +370,8 @@
         node.children[0].textContent = mask(a.name || a.id);
         node.children[1].textContent = money(a.cost);
         const bits = [integer(a.calls) + ' 次'];
-        if (a.timed) bits.push((a.ttft_ms / a.timed / 1000).toFixed(1) + 's 首字');
-        if (a.decode_ms) bits.push(Math.round(a.decode_out / (a.decode_ms / 1000)) + ' t/s');
+        if (a.timed) bits.push('首字 ' + (a.ttft_ms / a.timed / 1000).toFixed(1) + ' 秒');
+        if (a.decode_ms) bits.push(Math.round(a.decode_out / (a.decode_ms / 1000)) + ' 字/秒');
         if (a.errors) bits.push('失败 ' + a.errors);
         if (a.reasoning) bits.push('推理 ' + compact(a.reasoning));
         const seen = lastSeen.get(a.id || a.name);
@@ -392,8 +397,8 @@
         t.textContent = clockOf(r.t);
         ag.textContent = mask(r.agentName || r.agent);
         md.textContent = r.served || r.model;
-        out.replaceChildren(el('b', null, compact(r.out)), document.createTextNode(' out'));
-        ms.textContent = r.ms ? (r.ms / 1000).toFixed(1) + 's' : '—';
+        out.replaceChildren(el('b', null, compact(r.out)), document.createTextNode(' 出'));
+        ms.textContent = r.ms ? (r.ms / 1000).toFixed(1) + ' 秒' : '—';
         cost.textContent = r.priced ? money(r.cost) : '未计价';
         node.classList.toggle('bad', !!r.status);
         if (r.status) md.title = 'HTTP ' + r.status;
@@ -408,7 +413,7 @@
     const mid = s.length >> 1;
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   };
-  const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
+  const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + ' 秒';
 
   /* 签名动作：新路由到达时链路机柜四角亮一下。首轮不闪，之后每来一条闪一次。 */
   let lastRouteKey = null;
@@ -1349,7 +1354,7 @@
     // 页脚吸收原实时数据流的关键读数：在途 / 中位耗时 / 失败。
     const okMsList = rows.filter((r) => r.done && r.ms).map((r) => r.ms);
     const badCount = rows.filter((r) => r.bad).length;
-    $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐 token 观测';
+    $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐令牌观测';
     $('route-foot2').textContent = !rows.length
       ? '等待第一条路由'
       : idle
@@ -1380,7 +1385,7 @@
     renderCalls(requests);
     renderRouteStage(bundle);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
-    $('gw-meta').textContent = info ? 'magpie v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
+    $('gw-meta').textContent = info ? '网关 v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
     $('source-note').textContent = '数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽 · ' +
       (online ? '网关在线' : '网关离线 · 保留上次数据') +
