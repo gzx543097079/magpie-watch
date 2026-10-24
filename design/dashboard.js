@@ -397,7 +397,9 @@
   const routeSpent = new Set();   // 已回放过的 route id：同一条路由只播一次
   const routeNodes = { agents: new Map(), models: new Map() }; // name -> { state: in|live|out, since, y }
   const routeRipples = [];        // 包裹进出网关的涟漪
-  let routeCoreAlpha = 0;         // 待机核心（3D 呼吸球 + 声呐）的淡入淡出：只在都未触发时出现
+  let routeCoreAlpha = 0;         // 3D 核心的入场淡入
+  let routeCoreKick = 0;          // 包裹穿过网关时球体的弹跳脉冲（0–1，衰减）
+  const gwEnergyRef = { n: 0 };   // 本帧过境 + 停泊的包裹数，驱动核心转速与亮度
   let routeBoot = false;          // 首帧只回放最新几条，历史路由不补播
   let routeRaf = 0;
   let routeLastTs = 0;
@@ -511,15 +513,26 @@
     ctx.restore();
   }
 
-  /** 待机核心：绕 Y 轴慢转的 3D 线框球，随呼吸缩放；深度以透明度与线宽表达（后暗前亮）。 */
-  function drawGatewayCore(ctx, cx, cy, now, reduce, coreAlpha) {
+  /** 网关 3D 核心：绕 Y 轴旋转的线框球，常驻网关——待机慢转呼吸，运转随吞吐加速变亮。
+      深度以透明度与线宽表达（后暗前亮）；包裹穿过时 kick 让球体弹跳放大。 */
+  function drawGatewayCore(ctx, cx, cy, now, reduce, alpha, energy) {
     const breath = reduce ? 0 : Math.sin(now / 900);
-    const R = 46 * (1 + 0.07 * breath);
-    const yaw = reduce ? 0.6 : now / 3000;
+    const spin = reduce ? 0.35 : 0.35 + energy * 1.6 + routeCoreKick * 0.8;   // 转/秒
+    const R = 46 * (1 + 0.07 * breath * (1 - energy) + 0.12 * routeCoreKick);
+    const yaw = (reduce ? 0.6 : (now / 1000) * spin * Math.PI * 2 / 2);
     const tilt = -0.38;
     const sinT = Math.sin(tilt), cosT = Math.cos(tilt);
     const SEG = 32;
+    const glowK = 0.75 + 0.5 * energy + 0.35 * routeCoreKick;
     ctx.save();
+    // 能量高时加一圈外发光。
+    if (!reduce && energy > 0.05) {
+      const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.7);
+      halo.addColorStop(0, 'rgba(111, 242, 255, ' + Math.min(0.30, 0.08 + 0.20 * energy + 0.12 * routeCoreKick).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(111, 242, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(cx - R * 1.7, cy - R * 1.7, R * 3.4, R * 3.4);
+    }
     ctx.strokeStyle = ROUTE_C.request;
     const strokeCircle3D = (points, base) => {
       for (let i = 0; i < points.length; i += 1) {
@@ -529,8 +542,8 @@
         const a = [cx + ax, cy + ay * cosT - az * sinT, ay * sinT + az * cosT];
         const b = [cx + bx, cy + by * cosT - bz * sinT, by * sinT + bz * cosT];
         const k = ((a[2] + b[2]) / 2 / R + 1) / 2;
-        ctx.globalAlpha = coreAlpha * base * (0.22 + 0.55 * k);
-        ctx.lineWidth = 0.7 + 0.6 * k;
+        ctx.globalAlpha = Math.min(1, alpha * base * glowK * (0.22 + 0.55 * k));
+        ctx.lineWidth = 0.7 + 0.6 * k + energy * 0.5;
         ctx.beginPath();
         ctx.moveTo(a[0], a[1]);
         ctx.lineTo(b[0], b[1]);
@@ -612,21 +625,23 @@
     const agentPos = layout(routeNodes.agents);
     const modelPos = layout(routeNodes.models);
 
-    // 网关底光：待机且都未触发时随核心呼吸，忙碌时恒定微光——机舱的核心总有一点亮。
-    const coreTarget = (stageIdle && !routeNodes.agents.size && !routeNodes.models.size) ? 1 : 0;
-    routeCoreAlpha += (coreTarget - routeCoreAlpha) * (reduce ? 1 : 0.06);
-    if (Math.abs(coreTarget - routeCoreAlpha) > 0.02) routeLayoutBusy = true;
+    // 网关底光 + 3D 核心：核心常驻——待机慢转呼吸，运转随吞吐（在途+过境数）加速变亮。
+    routeCoreAlpha += (1 - routeCoreAlpha) * (reduce ? 1 : 0.06);
+    if (routeCoreAlpha < 0.98) routeLayoutBusy = true;
+    routeCoreKick *= reduce ? 0 : 0.90;
+    if (routeCoreKick > 0.02) routeLayoutBusy = true;
+    const energy = Math.min(1, (stageIdle ? 0 : 0.3) + 0.25 * Math.min(3, gwEnergyRef.n) + 0.5 * routeCoreKick);
     const gwGlow = stageIdle
       ? 0.08 + routeCoreAlpha * (reduce ? 0.02 : 0.02 + 0.06 * (0.5 + 0.5 * Math.sin(now / 700)))
-      : 0.08;
+      : 0.08 + routeCoreAlpha * (0.04 + 0.07 * energy);
     const gwGlowR = Math.min(W, H) * 0.42;
     const underglow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, gwGlowR);
     underglow.addColorStop(0, 'rgba(111, 242, 255, ' + gwGlow.toFixed(3) + ')');
     underglow.addColorStop(1, 'rgba(111, 242, 255, 0)');
     ctx.fillStyle = underglow;
     ctx.fillRect(W / 2 - gwGlowR, H / 2 - gwGlowR, gwGlowR * 2, gwGlowR * 2);
-    // 待机核心：3D 线框球绕轴慢转，随呼吸缩放——只在都未触发时出现。
-    if (routeCoreAlpha > 0.02) drawGatewayCore(ctx, W / 2, H / 2, now, reduce, routeCoreAlpha);
+    // 3D 核心常驻：能量驱动转速与亮度；待机时是慢转呼吸态。
+    if (routeCoreAlpha > 0.02) drawGatewayCore(ctx, W / 2, H / 2, now, reduce, routeCoreAlpha, energy);
 
     // 链路底图：虚线，随节点一起淡入淡出。
     ctx.save();
@@ -659,8 +674,8 @@
     });
     ctx.restore();
 
-    // 待机声呐：都未触发时，网关一圈圈向外呼吸（随核心一起淡入淡出）。
-    if (stageIdle && routeCoreAlpha > 0.02 && !reduce) {
+    // 待机声呐：都未触发（无行程无在途、芯片也全部退场）时，网关一圈圈向外呼吸。
+    if (stageIdle && !routeNodes.agents.size && !routeNodes.models.size && routeCoreAlpha > 0.02 && !reduce) {
       for (let i = 0; i < 2; i += 1) {
         const p = ((now / 2600) + i * 0.5) % 1;
         const r = gwW / 2 + 6 + p * Math.min(H, W) * 0.32;
@@ -696,6 +711,7 @@
         if (t >= 1) {
           trip.phase = 'req2'; trip.startedAt = now;
           routeRipples.push({ x: gwX, y: H / 2, at: now, color: trip.color });
+          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
         }
       } else if (trip.phase === 'req2') {
         const t = Math.min(1, elapsed / (ROUTE_T.req2 * speed));
@@ -732,6 +748,7 @@
         if (t >= 1) {
           trip.phase = 'res2'; trip.startedAt = now;
           routeRipples.push({ x: gwX + gwW, y: H / 2, at: now, color: trip.color });
+          routeCoreKick = Math.min(1, routeCoreKick + 0.55);   // 球体弹一下
         }
       } else if (trip.phase === 'res2') {
         const t = Math.min(1, elapsed / (ROUTE_T.res2 * speed));
@@ -756,6 +773,9 @@
         }
       }
     });
+
+    // 本帧能量：过境 + 停泊的包裹数（下一帧的核心转速/亮度用）。
+    gwEnergyRef.n = transit + parkedCount;
 
     // 涟漪：包裹进出网关的一圈水波。
     for (let i = routeRipples.length - 1; i >= 0; i -= 1) {
