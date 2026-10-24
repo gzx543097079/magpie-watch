@@ -602,13 +602,42 @@
   /* ── 实时链路：智能体 → 网关 → 模型，回复原路返回 ──
      trace 是 4 秒快照，不是逐 token 流：每条真实路由在首次出现时回放一次往返，
      在途路由停在模型处脉冲等待，快照确认完成后才放行回程。空闲不伪造流量。 */
+  const routeReduceQuery = matchMedia('(prefers-reduced-motion: reduce)');
   const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
   const ROUTE_T = { req1: 700, req2: 800, res1: 1100, res2: 1100, fastK: 0.6 };
   const routeTrips = new Map();   // route id -> 进行中的行程
   const routeSpent = new Set();   // 已回放过的 route id：同一条路由只播一次
+  const routeNodes = { agents: new Map(), models: new Map() }; // name -> { state: in|live|out, since, y }
   let routeBoot = false;          // 首帧只回放最新几条，历史路由不补播
   let routeRaf = 0;
   let routeLastTs = 0;
+  let routeLayoutBusy = false;    // 节点还在淡入/淡出/重排时保持循环
+
+  /** 最近 60 条里真实出现过的名字，按最近活跃排序。 */
+  function recentNames(rows, key, cap) {
+    const list = [];
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const name = rows[i][key];
+      if (name && !list.includes(name)) list.push(name);
+      if (list.length >= cap) break;
+    }
+    return list;
+  }
+
+  /** 拓扑对账：活跃行程的端点优先占位，其余按最近活跃补足；离开的节点淡出。 */
+  function syncRouteNodes(kind, desiredNames, now) {
+    const reg = routeNodes[kind];
+    const desired = new Set(desiredNames);
+    desiredNames.forEach((name) => {
+      const node = reg.get(name);
+      if (!node) reg.set(name, { state: 'in', since: now, y: null });
+      else if (node.state === 'out') { node.state = 'in'; node.since = now; }
+    });
+    reg.forEach((node, name) => {
+      if (!desired.has(name) && node.state !== 'out') { node.state = 'out'; node.since = now; }
+      if (node.state === 'out' && now - node.since > 600) reg.delete(name);
+    });
+  }
 
   /** 三次贝塞尔上取点：控制点取水平中点，得到平滑的 S 形链路。 */
   function legPoints(x0, y0, x1, y1) {
@@ -621,8 +650,9 @@
     return [a * p[0] + b * p[2] + c * p[4] + d * p[6], a * p[1] + b * p[3] + c * p[5] + d * p[7]];
   }
 
-  function drawRouteChip(ctx, x, y, w, h, title, sub, accent, glow) {
+  function drawRouteChip(ctx, x, y, w, h, title, sub, accent, glow, alpha) {
     ctx.save();
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
     ctx.shadowColor = glow ? accent : 'transparent';
     ctx.shadowBlur = glow ? 12 : 0;
     ctx.fillStyle = ROUTE_C.chip;
@@ -632,7 +662,7 @@
     ctx.roundRect(x, y, w, h, 3);
     ctx.fill();
     ctx.stroke();
-    ctx.restore();
+    ctx.shadowBlur = 0;
     ctx.fillStyle = glow ? '#ffffff' : '#f2f9ff';
     ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
     ctx.textAlign = 'center';
@@ -641,6 +671,7 @@
     ctx.fillStyle = glow ? accent : '#7e95ad';
     ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
     ctx.fillText(sub, x + w / 2, y + h / 2 + 11, w - 10);
+    ctx.restore();
   }
 
   function drawRouteComet(ctx, p, t0, t1, color, width) {
@@ -687,19 +718,11 @@
     ctx.clearRect(0, 0, rect.width, rect.height);
     const W = rect.width, H = rect.height;
 
-    // 拓扑：最近 60 条里真实出现过的智能体与模型，按最近活跃排序，各留前 3。
-    const recent = (key) => {
-      const list = [];
-      for (let i = rows.length - 1; i >= 0; i -= 1) {
-        const name = rows[i][key];
-        if (name && !list.includes(name)) list.push(name);
-        if (list.length >= 3) break;
-      }
-      return list;
-    };
-    const agents = recent('agent');
-    const models = recent('model');
-    if (!agents.length || !models.length) {
+    // 拓扑：登记表驱动——新节点淡入、离场节点淡出、位置缓动重排；
+    // 活跃行程的端点在 syncRouteNodes 里优先占位，这里只读登记表。
+    routeLayoutBusy = false;
+    const reduce = routeReduceQuery.matches;
+    if (!routeNodes.agents.size && !routeNodes.models.size) {
       ctx.fillStyle = '#7e95ad';
       ctx.font = '400 10px "Avenir Next", "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
@@ -709,13 +732,41 @@
 
     const agentW = Math.min(148, W * 0.16), modelW = Math.min(158, W * 0.17), gwW = 108, chipH = 34;
     const agentX = 4, modelX = W - modelW - 4, gwX = (W - gwW) / 2;
-    const yAt = (i, n) => ((i + 1) / (n + 1)) * (H - chipH - 8) + 4;
+    const alphaOf = (node) => {
+      if (reduce) return node.state === 'out' ? 0 : 1;
+      if (node.state === 'in') return Math.min(1, (now - node.since) / 500);
+      if (node.state === 'out') return Math.max(0, 1 - (now - node.since) / 600);
+      return 1;
+    };
+    // 布局：在册节点缓动到目标位（稳定序，避免每次轮询跳位）；退场节点原地淡出。
+    const layout = (reg) => {
+      if (!reduce) reg.forEach((n) => { if (n.state === 'in' && now - n.since > 500) n.state = 'live'; });
+      const live = [...reg.entries()].filter(([, n]) => n.state !== 'out');
+      const pos = new Map();
+      live.forEach(([name, node], i) => {
+        const target = ((i + 1) / (live.length + 1)) * (H - chipH - 8) + 4 + chipH / 2;
+        if (node.y == null || reduce) node.y = target;
+        else {
+          node.y += (target - node.y) * 0.22;
+          if (Math.abs(target - node.y) > 0.75) routeLayoutBusy = true;
+        }
+        pos.set(name, node.y);
+      });
+      reg.forEach((node, name) => { if (node.state === 'out' && node.y != null) pos.set(name, node.y); });
+      return pos;
+    };
+    const agentPos = layout(routeNodes.agents);
+    const modelPos = layout(routeNodes.models);
 
-    // 链路底图：虚线；有待机的链路比空闲的亮一档。
+    // 链路底图：虚线，随节点一起淡入淡出。
     ctx.save();
     ctx.setLineDash([2, 5]);
-    agents.forEach((a, i) => {
-      const p = legPoints(agentX + agentW, yAt(i, agents.length) + chipH / 2, gwX, H / 2);
+    routeNodes.agents.forEach((node, name) => {
+      const y = agentPos.get(name);
+      const alpha = alphaOf(node);
+      if (y == null || alpha <= 0.02) return;
+      const p = legPoints(agentX + agentW, y, gwX, H / 2);
+      ctx.globalAlpha = alpha;
       ctx.strokeStyle = ROUTE_C.link;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -723,8 +774,12 @@
       ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
       ctx.stroke();
     });
-    models.forEach((m, i) => {
-      const p = legPoints(gwX + gwW, H / 2, modelX, yAt(i, models.length) + chipH / 2);
+    routeNodes.models.forEach((node, name) => {
+      const y = modelPos.get(name);
+      const alpha = alphaOf(node);
+      if (y == null || alpha <= 0.02) return;
+      const p = legPoints(gwX + gwW, H / 2, modelX, y);
+      ctx.globalAlpha = alpha;
       ctx.strokeStyle = ROUTE_C.link;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -734,15 +789,14 @@
     });
     ctx.restore();
 
-    // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。
+    // 包裹：沿链路移动的彗星；在途的停在模型处脉冲。端点坐标取节点当前位置，重排时彗星跟着走。
     const activeAgents = new Set(), activeModels = new Set();
     let parkedCount = 0;
     routeTrips.forEach((trip) => {
-      const ai = agents.indexOf(trip.agent);
-      const mi = models.indexOf(trip.model);
-      if (ai < 0 || mi < 0) return;
-      const ay = yAt(ai, agents.length) + chipH / 2;
-      const my = yAt(mi, models.length) + chipH / 2;
+      const an = routeNodes.agents.get(trip.agent);
+      const mn = routeNodes.models.get(trip.model);
+      if (!an || !mn || an.y == null || mn.y == null) return;
+      const ay = an.y, my = mn.y;
       const leg1 = legPoints(agentX + agentW, ay, gwX, H / 2);
       const leg2 = legPoints(gwX + gwW, H / 2, modelX, my);
       const elapsed = now - trip.startedAt;
@@ -806,7 +860,7 @@
       }
     });
 
-    // 芯片：智能体 / 网关 / 模型。
+    // 芯片：智能体 / 网关 / 模型。智能体名按遮蔽设置渲染。
     const agentCalls = new Map(), modelMs = new Map();
     rows.forEach((r) => {
       agentCalls.set(r.agent, (agentCalls.get(r.agent) || 0) + 1);
@@ -816,16 +870,26 @@
         modelMs.set(r.model, list);
       }
     });
-    agents.forEach((a, i) => drawRouteChip(ctx, agentX, yAt(i, agents.length), agentW, chipH,
-      mask(a), integer(agentCalls.get(a) || 0) + ' 次', ROUTE_C.request, activeAgents.has(a)));
-    models.forEach((m, i) => drawRouteChip(ctx, modelX, yAt(i, models.length), modelW, chipH,
-      m, secs(median(modelMs.get(m) || [])), ROUTE_C.response, activeModels.has(m)));
+    routeNodes.agents.forEach((node, name) => {
+      const y = agentPos.get(name);
+      const alpha = alphaOf(node);
+      if (y == null || alpha <= 0.02) return;
+      drawRouteChip(ctx, agentX, y - chipH / 2, agentW, chipH,
+        mask(name), integer(agentCalls.get(name) || 0) + ' 次', ROUTE_C.request, activeAgents.has(name), alpha);
+    });
+    routeNodes.models.forEach((node, name) => {
+      const y = modelPos.get(name);
+      const alpha = alphaOf(node);
+      if (y == null || alpha <= 0.02) return;
+      drawRouteChip(ctx, modelX, y - chipH / 2, modelW, chipH,
+        name, secs(median(modelMs.get(name) || [])), ROUTE_C.response, activeModels.has(name), alpha);
+    });
     const running = rows.filter((r) => !r.done).length;
     drawRouteChip(ctx, gwX, H / 2 - chipH / 2, gwW, chipH, 'MAGPIE 网关',
       '今日 ' + integer(todayCalls) + ' · 在途 ' + running, ROUTE_C.request, parkedCount > 0 || running > 0);
   }
 
-  /** 舞台主循环：有移动包 30fps，只剩停泊 8fps，落地闪放完才停帧。 */
+  /** 舞台主循环：有移动包 30fps，只剩停泊 8fps；节点淡入淡出与重排期间保持循环，落地闪放完才停帧。 */
   function routeTick(ts) {
     const rows = routeTick.rows || [];
     let active = false;
@@ -840,6 +904,11 @@
       }
     });
     if (!active) {
+      [routeNodes.agents, routeNodes.models].forEach((reg) => reg.forEach((n) => {
+        if (n.state !== 'live') active = true;
+      }));
+    }
+    if (!active && !routeLayoutBusy) {
       routeRaf = 0;
       drawRouteStage(ts, rows, routeTick.todayCalls || 0);
       return;
@@ -854,8 +923,21 @@
 
   function renderRouteStage(bundle) {
     const rows = readLive(bundle.trace);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = routeReduceQuery.matches;
     const now = performance.now();
+
+    // 拓扑对账：活跃行程的端点优先占位，其次按最近活跃；进出场走淡入淡出。
+    const tripAgentNames = [], tripModelNames = [];
+    routeTrips.forEach((t) => {
+      if (t.phase !== 'done') {
+        if (!tripAgentNames.includes(t.agent)) tripAgentNames.push(t.agent);
+        if (!tripModelNames.includes(t.model)) tripModelNames.push(t.model);
+      }
+    });
+    const agentNames = [...new Set([...tripAgentNames, ...recentNames(rows, 'agent', 3)])].slice(0, 3);
+    const modelNames = [...new Set([...tripModelNames, ...recentNames(rows, 'model', 3)])].slice(0, 3);
+    syncRouteNodes('agents', agentNames, now);
+    syncRouteNodes('models', modelNames, now);
 
     // 快照对账：新路由开程（每条只播一次），已在途的确认完成后放行回程。
     const seenIds = new Set();
