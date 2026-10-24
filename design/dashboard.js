@@ -1176,6 +1176,8 @@
       }
     });
     ctx.globalCompositeOperation = 'source-over';
+    // 屏保概览：全屏时画布标注一起放大（星系是屏保的主角）。
+    const big = document.body.classList.contains('fullscreen');
     const drawPlanet = (node, accent, active, label, sub, litSign, calls, ringed) => {
       const alpha = alphaOf(node);
       if (node.px == null || alpha <= 0.02) return;
@@ -1247,12 +1249,12 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = active ? '#eafcff' : '#dbe9f6';
-      ctx.font = '500 9.5px ui-monospace, "SF Mono", Menlo, monospace';
-      ctx.fillText(label, x, y + r + 14, 132);
+      ctx.font = (big ? '500 12.5px ' : '500 9.5px ') + 'ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(label, x, y + r + (big ? 18 : 14), 150);
       ctx.globalAlpha = alpha * 0.75;
       ctx.fillStyle = '#7e95ad';
-      ctx.font = '400 8px ui-monospace, "SF Mono", Menlo, monospace';
-      ctx.fillText(sub, x, y + r + 24, 132);
+      ctx.font = (big ? '400 10.5px ' : '400 8px ') + 'ui-monospace, "SF Mono", Menlo, monospace';
+      ctx.fillText(sub, x, y + r + (big ? 32 : 24), 150);
       ctx.restore();
     };
     routeNodes.agents.forEach((node, name) => drawPlanet(node, ROUTE_C.request, activeAgents.has(name),
@@ -1266,11 +1268,11 @@
     ctx.globalAlpha = 0.92 * routeCoreAlpha;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2f9ff';
-    ctx.font = '600 10.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.fillText('MAGPIE 网关', cx, cy + 44);
+    ctx.font = (big ? '600 13px ' : '600 10.5px ') + 'ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText('MAGPIE 网关', cx, cy + (big ? 50 : 44));
     ctx.fillStyle = '#7e95ad';
-    ctx.font = '400 8.5px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.fillText('今日 ' + integer(todayCalls) + ' · 在途 ' + running, cx, cy + 56);
+    ctx.font = (big ? '400 11px ' : '400 8.5px ') + 'ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText('今日 ' + integer(todayCalls) + ' · 在途 ' + running, cx, cy + (big ? 66 : 56));
     ctx.restore();
   }
 

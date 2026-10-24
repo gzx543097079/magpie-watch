@@ -623,6 +623,30 @@ body.offline .wall { transition: opacity 0.4s ease; }
 body.offline .mod { --tick-c: rgba(255, 122, 122, 0.4); }
 body.offline::after { animation-play-state: paused; opacity: 0.4; }
 
+/* 屏保概览模式：全屏（屏保）时降噪——细节层退场，一眼读数放大，星系占更大。
+   桌面态不受影响，仍是全量数据面板。 */
+body.fullscreen .today-grid { grid-template-columns: minmax(0, 1fr); }
+body.fullscreen .today-side { display: none; }
+body.fullscreen .hero b { font-size: 64px; }
+body.fullscreen .hero-row { gap: 30px; }
+body.fullscreen .cache { flex-basis: 200px; }
+body.fullscreen .cache-top b { font-size: 32px; }
+body.fullscreen .cells { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+body.fullscreen .cells b { font-size: 22px; }
+body.fullscreen .cells span { font-size: 10.5px; }
+body.fullscreen .flow, body.fullscreen .rhythm { display: none; }
+body.fullscreen .q-spark, body.fullscreen .q-sub, body.fullscreen .q-idle { display: none; }
+body.fullscreen .q-top em { font-size: 15px; }
+body.fullscreen .q-top b { font-size: 13px; }
+body.fullscreen .q { padding: 4px 0 5px; }
+body.fullscreen .q-group > h3 { font-size: 12px; }
+body.fullscreen main { grid-template-rows: minmax(0, 27fr) minmax(0, 61fr) minmax(0, 12fr); }
+body.fullscreen .a span, body.fullscreen .a .share, body.fullscreen .calls { display: none; }
+body.fullscreen .a b { font-size: 13px; }
+body.fullscreen .a em { font-size: 14px; }
+body.fullscreen .mod > h2 { font-size: 11px; }
+body.fullscreen .mod-foot { font-size: 10.5px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
