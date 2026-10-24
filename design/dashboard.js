@@ -214,12 +214,6 @@
     return { name: line.name, etaH };
   }
   const etaText = (h) => h < 1 ? Math.max(1, Math.round(h * 60)) + ' 分钟' : h < 48 ? h.toFixed(1) + ' 小时' : Math.round(h / 24) + ' 天';
-  /* 窗口名中文化：网关返回的是 5 hours / 7 days / Total 这类英文名，展示层映射成中文；
-     没映射的（新窗口类型）原样显示，数据关联始终用原始名。 */
-  const WIN_CN = { '5 hours': '5 小时', '7 days': '7 天', '1 day': '1 天', '24 hours': '24 小时',
-                   '30 days': '30 天', '1 week': '1 周', '1 month': '1 月', 'total': '总量', 'Total': '总量' };
-  const winName = (n) => WIN_CN[n] || n;
-
   function renderQuotas(quotas, history) {
     const accounts = quotas.data || [];
     // 整块右侧全给额度：按账号分组，每个账号列出它所有窗口，不折叠、不裁切。
@@ -308,7 +302,7 @@
           main.children[1].textContent = resetShort(lead.resetsAt);
           main.children[2].textContent = lead.resetsAt ? clockOf(lead.resetsAt) + ' 恢复' : '';
         } else {
-          main.children[0].textContent = winName(lead.name) || '额度';
+          main.children[0].textContent = lead.name || '额度';
           main.children[1].textContent = typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—');
           main.children[2].textContent = resetText(lead.resetsAt);
         }
@@ -324,7 +318,7 @@
         // 小字行：其余窗口「名 剩余」串 + 估算 + 占用，一行收拢。
         const bits = [];
         g.wins.slice(1).forEach((w) => {
-          bits.push(winName(w.name) + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
+          bits.push(w.name + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
         });
         if (g.eta && g.eta.name === lead.name) bits.push('估算 ' + etaText(g.eta.etaH) + ' 用尽');
         if (lead.holds && lead.holds.tokens) bits.push(compact(lead.holds.tokens) + ' 令牌已占');
@@ -343,7 +337,7 @@
       !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
     $('quota-foot2').textContent = noWin
       ? '另有 ' + noWin + ' 个账号未上报窗口'
-      : (fastest ? '最快燃尽 · ' + winName(fastest.name) + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '');
+      : (fastest ? '最快燃尽 · ' + fastest.name + ' · 估算 ' + etaText(fastest.etaH) + ' 用尽' : '');
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
@@ -572,7 +566,6 @@
   }
 
   function drawRouteComet(ctx, p, t0, t1, color, width, now, reduce) {
-    const steps = 10;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
@@ -590,31 +583,17 @@
       }
       ctx.stroke();
     }
-    // 外圈柔光：一次更宽更淡的描边，给彗星体积感。
-    ctx.globalAlpha = 0.09;
-    ctx.lineWidth = width * 2.8;
-    ctx.strokeStyle = color;
-    {
-      const [sx, sy] = cubicAt(p, t0);
-      const [ex, ey] = cubicAt(p, t1);
+    // 粒子流：一串光点沿路径传输（近头部大而亮，向尾端小而暗），像数据在管道里流动。
+    const DOTS = 9;
+    for (let k = 0; k < DOTS; k += 1) {
+      const tt = t1 - (k / DOTS) * (t1 - t0);
+      const [dx2, dy2] = cubicAt(p, tt);
+      const fade = 1 - k / DOTS;
+      ctx.globalAlpha = 0.16 + 0.74 * fade * fade;
+      ctx.fillStyle = k < 3 ? '#dffcff' : color;
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-    }
-    // 尾巴：淡 → 亮两段，头部一颗亮点。
-    for (let i = 0; i < steps; i += 1) {
-      const a = t0 + (t1 - t0) * (i / steps);
-      const b = t0 + (t1 - t0) * ((i + 1) / steps);
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.12 + 0.7 * (i / steps);
-      ctx.lineWidth = width * (0.5 + 0.5 * (i / steps));
-      ctx.beginPath();
-      const [x0, y0] = cubicAt(p, a);
-      const [x1, y1] = cubicAt(p, b);
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
+      ctx.arc(dx2, dy2, Math.max(0.6, width * (1.35 - k * 0.11)), 0, Math.PI * 2);
+      ctx.fill();
     }
     const [hx, hy] = cubicAt(p, t1);
     ctx.globalAlpha = 1;
@@ -1437,14 +1416,14 @@
     // 页脚吸收原实时数据流的关键读数：在途 / 中位耗时 / 失败。
     const okMsList = rows.filter((r) => r.done && r.ms).map((r) => r.ms);
     const badCount = rows.filter((r) => r.bad).length;
-    $('route-foot').textContent = '快照回放 · 4 秒轮询 · 非逐令牌观测';
+    $('route-foot').textContent = '快照回放 · 秒级轮询 · 非逐令牌观测';
     const directTail = directRows.length ? ' · 直连 ' + directRows.length : '';
     $('route-foot2').textContent = !rows.length && !directRows.length
       ? '等待第一条路由'
       : idle
         ? '网关待机 · 中位 ' + secs(median(okMsList)) + ' · 最近 ' + rows.length + ' 条' + directTail
         : '在途 ' + running + ' · 中位 ' + secs(median(okMsList)) + (badCount ? ' · 失败 ' + badCount : '') + directTail;
-    $('route-note').textContent = '智能体 → 网关 → 模型' + (directRows.length ? '（紫=直连）' : '') + ' · 4 秒快照回放';
+    $('route-note').textContent = '智能体 → 网关 → 模型' + (directRows.length ? '（紫=直连）' : '') + ' · 秒级快照回放';
 
     routeTick.rows = rows;
     routeTick.todayCalls = (bundle.today && bundle.today.calls) || 0;
@@ -1536,11 +1515,33 @@
   tickClock();
   setInterval(tickClock, 1000);
 
-  /* 轮询与 Watch 一致：先取数据再等待，周期 4 秒。 */
+  /* 轮询分两层：主循环 4 秒全量；快循环 1 秒只拉 trace 与请求账本，
+     星系舞台与最近调用因此接近实时。trace 是快照语义，不声称逐令牌流。 */
   (async function loop() {
     for (;;) {
       await refresh();
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
   })();
+
+  let fastBusy = false;
+  async function refreshFast() {
+    if (fastBusy || !lastGood) return;
+    fastBusy = true;
+    try {
+      const [trace, requests] = await Promise.all([
+        get('/v1/magpie/trace'),
+        get('/v1/magpie/usage/requests?period=today&limit=6').catch(() => null)
+      ]);
+      lastGood.trace = trace;
+      if (requests) lastGood.requests = requests;
+      renderRouteStage(lastGood);
+      renderCalls(lastGood.requests);
+    } catch (error) {
+      // 快循环失败不打扰画面：网关状态交给主循环判定。
+    } finally {
+      fastBusy = false;
+    }
+  }
+  setInterval(refreshFast, 1000);
 })();

@@ -449,13 +449,24 @@ main {
   grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: min-content;
   align-content: start;
-  row-gap: 9px;
+  row-gap: 12px;
   /* 账号多到一屏放不下时整列滚动，绝不裁掉最后几个账号。 */
   overflow-y: auto;
   scrollbar-width: none;
+  padding-right: 4px;
 }
 .q-list::-webkit-scrollbar { width: 0; }
-.q-group { min-width: 0; }
+/* 每个账号一个机架单元：细框 + 微底色，状态异常时整格带一层淡色警示 */
+.q-group {
+  min-width: 0;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 8px 12px 9px;
+  background: rgba(13, 28, 48, 0.38);
+  background-image: linear-gradient(180deg, rgba(111, 242, 255, 0.025), transparent 34%);
+}
+.q-group.st-warn { background-color: rgba(58, 42, 22, 0.32); border-color: rgba(255, 188, 125, 0.22); }
+.q-group.st-bad { background-color: rgba(56, 24, 26, 0.34); border-color: rgba(255, 122, 122, 0.26); }
 
 /* 账号名是这一组的主语：字号比窗口名大一档，前面一枚发光圆点 */
 .q-group > h3 {
