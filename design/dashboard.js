@@ -392,24 +392,32 @@
   const routeReduceQuery = matchMedia('(prefers-reduced-motion: reduce)');
   const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
   const ROUTE_T = { req1: 700, req2: 800, res1: 1100, res2: 1100, fastK: 0.6 };
+  const ROUTE_NODE_TTL = 30000;   // 智能体/模型芯片只在触发后 30 秒内存在，没再触发就退场
   const routeTrips = new Map();   // route id -> 进行中的行程
   const routeSpent = new Set();   // 已回放过的 route id：同一条路由只播一次
   const routeNodes = { agents: new Map(), models: new Map() }; // name -> { state: in|live|out, since, y }
   const routeRipples = [];        // 包裹进出网关的涟漪
+  let routeCoreAlpha = 0;         // 待机核心（3D 呼吸球 + 声呐）的淡入淡出：只在都未触发时出现
   let routeBoot = false;          // 首帧只回放最新几条，历史路由不补播
   let routeRaf = 0;
   let routeLastTs = 0;
   let routeLayoutBusy = false;    // 节点还在淡入/淡出/重排时保持循环
 
-  /** 最近 60 条里真实出现过的名字，按最近活跃排序。 */
-  function recentNames(rows, key, cap) {
-    const list = [];
-    for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const name = rows[i][key];
-      if (name && !list.includes(name)) list.push(name);
-      if (list.length >= cap) break;
-    }
-    return list;
+  /** TTL 内真实触发过的名字：活动时刻 = 开始 +（已完成的）耗时，按最近活动排序。 */
+  function recentNames(rows, key, cap, ttl) {
+    const newest = new Map(); // name -> 最近一次活动的 epoch ms
+    rows.forEach((r) => {
+      if (!r[key]) return;
+      const activeAt = r.at + (r.done ? (r.ms || 0) : 0);
+      const prev = newest.get(r[key]);
+      if (prev == null || activeAt > prev) newest.set(r[key], activeAt);
+    });
+    const cut = Date.now() - ttl;
+    return [...newest.entries()]
+      .filter(([, at]) => at >= cut)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, cap)
+      .map(([name]) => name);
   }
 
   /** 拓扑对账：活跃行程的端点优先占位，其余按最近活跃补足；离开的节点淡出。 */
@@ -503,6 +511,56 @@
     ctx.restore();
   }
 
+  /** 待机核心：绕 Y 轴慢转的 3D 线框球，随呼吸缩放；深度以透明度与线宽表达（后暗前亮）。 */
+  function drawGatewayCore(ctx, cx, cy, now, reduce, coreAlpha) {
+    const breath = reduce ? 0 : Math.sin(now / 900);
+    const R = 46 * (1 + 0.07 * breath);
+    const yaw = reduce ? 0.6 : now / 3000;
+    const tilt = -0.38;
+    const sinT = Math.sin(tilt), cosT = Math.cos(tilt);
+    const SEG = 32;
+    ctx.save();
+    ctx.strokeStyle = ROUTE_C.request;
+    const strokeCircle3D = (points, base) => {
+      for (let i = 0; i < points.length; i += 1) {
+        const [ax, ay, az] = points[i];
+        const [bx, by, bz] = points[(i + 1) % points.length];
+        // 倾斜投影：绕 X 轴轻俯视，z 深度决定透明度与线宽。
+        const a = [cx + ax, cy + ay * cosT - az * sinT, ay * sinT + az * cosT];
+        const b = [cx + bx, cy + by * cosT - bz * sinT, by * sinT + bz * cosT];
+        const k = ((a[2] + b[2]) / 2 / R + 1) / 2;
+        ctx.globalAlpha = coreAlpha * base * (0.22 + 0.55 * k);
+        ctx.lineWidth = 0.7 + 0.6 * k;
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.stroke();
+      }
+    };
+    // 经线 6 条：过两极的大圆，随 yaw 旋转。
+    for (let m = 0; m < 6; m += 1) {
+      const yawM = yaw + (m * Math.PI) / 6;
+      const pts = [];
+      for (let s = 0; s < SEG; s += 1) {
+        const t = (s / SEG) * Math.PI * 2;
+        pts.push([R * Math.sin(t) * Math.cos(yawM), R * Math.cos(t), R * Math.sin(t) * Math.sin(yawM)]);
+      }
+      strokeCircle3D(pts, 0.5);
+    }
+    // 纬线 3 条：上、赤道、下。
+    for (let j = -1; j <= 1; j += 1) {
+      const h = (R * j) / 2;
+      const r = Math.sqrt(Math.max(0, R * R - h * h));
+      const pts = [];
+      for (let s = 0; s < SEG; s += 1) {
+        const t = (s / SEG) * Math.PI * 2;
+        pts.push([r * Math.cos(t), h, r * Math.sin(t)]);
+      }
+      strokeCircle3D(pts, 0.42);
+    }
+    ctx.restore();
+  }
+
   /** 每帧重排舞台：芯片位置只依赖画布尺寸，数据依赖只读。 */
   function drawRouteStage(now, rows, todayCalls) {
     const canvas = $('route-canvas');
@@ -522,15 +580,9 @@
 
     // 拓扑：登记表驱动——新节点淡入、离场节点淡出、位置缓动重排；
     // 活跃行程的端点在 syncRouteNodes 里优先占位，这里只读登记表。
+    // 两个登记表都空（完全没有触发的智能体/模型）时只剩网关自己的呼吸核心。
     routeLayoutBusy = false;
     const reduce = routeReduceQuery.matches;
-    if (!routeNodes.agents.size && !routeNodes.models.size) {
-      ctx.fillStyle = '#7e95ad';
-      ctx.font = '400 10px "Avenir Next", "PingFang SC", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('等待第一条路由', W / 2, H / 2 + 4);
-      return;
-    }
 
     const agentW = Math.min(148, W * 0.16), modelW = Math.min(158, W * 0.17), gwW = 108, chipH = 34;
     const agentX = 4, modelX = W - modelW - 4, gwX = (W - gwW) / 2;
@@ -560,14 +612,21 @@
     const agentPos = layout(routeNodes.agents);
     const modelPos = layout(routeNodes.models);
 
-    // 网关底光：待机时呼吸，忙碌时恒定微光——机舱的核心总有一点亮。
-    const gwGlow = stageIdle ? (reduce ? 0.10 : 0.10 + 0.06 * Math.sin(now / 700)) : 0.08;
+    // 网关底光：待机且都未触发时随核心呼吸，忙碌时恒定微光——机舱的核心总有一点亮。
+    const coreTarget = (stageIdle && !routeNodes.agents.size && !routeNodes.models.size) ? 1 : 0;
+    routeCoreAlpha += (coreTarget - routeCoreAlpha) * (reduce ? 1 : 0.06);
+    if (Math.abs(coreTarget - routeCoreAlpha) > 0.02) routeLayoutBusy = true;
+    const gwGlow = stageIdle
+      ? 0.08 + routeCoreAlpha * (reduce ? 0.02 : 0.02 + 0.06 * (0.5 + 0.5 * Math.sin(now / 700)))
+      : 0.08;
     const gwGlowR = Math.min(W, H) * 0.42;
     const underglow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, gwGlowR);
     underglow.addColorStop(0, 'rgba(111, 242, 255, ' + gwGlow.toFixed(3) + ')');
     underglow.addColorStop(1, 'rgba(111, 242, 255, 0)');
     ctx.fillStyle = underglow;
     ctx.fillRect(W / 2 - gwGlowR, H / 2 - gwGlowR, gwGlowR * 2, gwGlowR * 2);
+    // 待机核心：3D 线框球绕轴慢转，随呼吸缩放——只在都未触发时出现。
+    if (routeCoreAlpha > 0.02) drawGatewayCore(ctx, W / 2, H / 2, now, reduce, routeCoreAlpha);
 
     // 链路底图：虚线，随节点一起淡入淡出。
     ctx.save();
@@ -600,13 +659,13 @@
     });
     ctx.restore();
 
-    // 待机声呐：没有触发的智能体和模型时，网关自己一圈圈向外呼吸。
-    if (stageIdle && !reduce) {
+    // 待机声呐：都未触发时，网关一圈圈向外呼吸（随核心一起淡入淡出）。
+    if (stageIdle && routeCoreAlpha > 0.02 && !reduce) {
       for (let i = 0; i < 2; i += 1) {
         const p = ((now / 2600) + i * 0.5) % 1;
         const r = gwW / 2 + 6 + p * Math.min(H, W) * 0.32;
         ctx.save();
-        ctx.globalAlpha = (1 - p) * 0.34;
+        ctx.globalAlpha = routeCoreAlpha * (1 - p) * 0.34;
         ctx.strokeStyle = ROUTE_C.request;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -794,8 +853,8 @@
         if (!tripModelNames.includes(t.model)) tripModelNames.push(t.model);
       }
     });
-    const agentNames = [...new Set([...tripAgentNames, ...recentNames(rows, 'agent', 3)])].slice(0, 3);
-    const modelNames = [...new Set([...tripModelNames, ...recentNames(rows, 'model', 3)])].slice(0, 3);
+    const agentNames = [...new Set([...tripAgentNames, ...recentNames(rows, 'agent', 3, ROUTE_NODE_TTL)])].slice(0, 3);
+    const modelNames = [...new Set([...tripModelNames, ...recentNames(rows, 'model', 3, ROUTE_NODE_TTL)])].slice(0, 3);
     syncRouteNodes('agents', agentNames, now);
     syncRouteNodes('models', modelNames, now);
 
@@ -803,12 +862,16 @@
     const seenIds = new Set();
     if (!routeBoot) {
       routeBoot = true;
-      // 首帧：只有最新 3 条算「新闻」，其余历史路由直接标记已回放。
-      rows.slice(0, Math.max(0, rows.length - 3)).forEach((r) => routeSpent.add(r.id));
+      // 首帧：只有 30 秒内还有活动的路由算「新闻」，更早的历史直接标记已回放。
+      rows.forEach((r) => {
+        if (Date.now() - (r.at + (r.ms || 0)) > ROUTE_NODE_TTL) routeSpent.add(r.id);
+      });
     }
     rows.forEach((r) => {
       seenIds.add(r.id);
       if (routeSpent.has(r.id)) return;
+      // 只回放 30 秒内仍有活动的路由（长请求按其完整生命周期算）；更老的不补播。
+      if (r.done && Date.now() - (r.at + (r.ms || 0)) > ROUTE_NODE_TTL) { routeSpent.add(r.id); return; }
       let trip = routeTrips.get(r.id);
       if (!trip) {
         if (reduce) return; // 减少动态：不播包，只在静态图上标注
