@@ -390,35 +390,25 @@ main {
 .cells span { display: block; color: var(--dim); font-size: 9px; letter-spacing: 0.05em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cells b { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
 
-/* 24 小时节奏：一排小时柱，当前小时点亮；峰值注在标题行 */
-.rhythm { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair); }
-.rhythm-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--dim);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  margin-bottom: 6px;
-}
-.rhythm-head b { color: var(--muted); font-weight: 400; letter-spacing: 0.03em; }
-.rhythm-bars { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
-.rhythm-bars i {
+/* 节奏脉搏：右下模块的 24 小时柱场。今日模块里的小条带已并入这里：
+   柱高 = 该小时调用量，当前小时点亮冒火花，出错小时柱顶一段红。 */
+.pulse-body { display: flex; flex-direction: column; min-height: 0; }
+.pulse-bars { flex: 1 1 0; min-height: 0; display: flex; align-items: flex-end; gap: 3px; }
+.pulse-bars i {
   flex: 1 1 0;
-  min-width: 2px;
-  max-width: 14px;
+  min-width: 3px;
   display: block;
   position: relative;
   background: rgba(47, 127, 214, 0.4);
   border-top: 1px solid rgba(111, 242, 255, 0.35);
 }
-.rhythm-bars i.cur {
+.pulse-bars i.cur {
   background: linear-gradient(180deg, var(--live), rgba(47, 127, 214, 0.5));
   box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
 }
 /* 当前小时冒出的荧光火花：此刻有活动的小时才会「冒烟」 */
-.rhythm-bars i.cur::before,
-.rhythm-bars i.cur::after {
+.pulse-bars i.cur::before,
+.pulse-bars i.cur::after {
   content: '';
   position: absolute;
   bottom: 100%;
@@ -430,16 +420,19 @@ main {
   box-shadow: 0 0 5px rgba(111, 242, 255, 0.95);
   animation: rise 1.7s ease-out infinite;
 }
-.rhythm-bars i.cur::after { animation-delay: 0.85s; }
+.pulse-bars i.cur::after { animation-delay: 0.85s; }
+.pulse-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
+/* 出过错的小时：柱顶一段红，故障时段一眼可辨 */
+.pulse-bars i.err {
+  background: linear-gradient(180deg, rgba(255, 122, 122, 0.65) 0 3px, rgba(47, 127, 214, 0.4) 3px);
+  border-top-color: rgba(255, 122, 122, 0.8);
+}
+/* 轴标：每 4 小时一个刻度，与柱位同宽对齐 */
+.pulse-axis { flex: none; display: flex; gap: 3px; margin-top: 5px; }
+.pulse-axis span { flex: 1 1 0; min-width: 3px; color: var(--dim2); font-family: var(--mono); font-size: 8px; letter-spacing: 0.04em; white-space: nowrap; overflow: visible; }
 @keyframes rise {
   from { transform: translate(-50%, 1px); opacity: 0.95; }
   to { transform: translate(-50%, -15px); opacity: 0; }
-}
-.rhythm-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
-/* 出过错的小时：柱顶一段红，故障时段一眼可辨 */
-.rhythm-bars i.err {
-  background: linear-gradient(180deg, rgba(255, 122, 122, 0.65) 0 3px, rgba(47, 127, 214, 0.4) 3px);
-  border-top-color: rgba(255, 122, 122, 0.8);
 }
 
 /* 额度：左栏三分之一整列。账号之间留白，窗口之间只留一条细线，不靠边框分隔。 */
@@ -609,7 +602,7 @@ main {
 .q-idle b { flex: none; font-weight: 400; font-size: 10px; color: var(--muted); letter-spacing: 0.03em; }
 .q-idle span { color: var(--dim2); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 模型矩阵：一行一模型，名字 + 成本 + 明细 + 调用占比条 */
+/* 会话排行：一行一会话，名字 + 费用 + 明细 + 费用占比条（复用 .models-wide 三列网格） */
 .models-wide, .agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
 .a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--hair); }
 .a:last-child { border-bottom: 0; }
@@ -697,7 +690,7 @@ body.fullscreen .cache-top b { font-size: 32px; }
 body.fullscreen .mini { display: none; }
 body.fullscreen .cells b { font-size: 20px; }
 body.fullscreen .cells span { font-size: 10px; }
-body.fullscreen .flow, body.fullscreen .rhythm { display: none; }
+body.fullscreen .flow { display: none; }
 body.fullscreen .q-sub, body.fullscreen .q-idle { display: none; }
 body.fullscreen .q-main em { font-size: 26px; }
 body.fullscreen .q-main b { font-size: 11px; }

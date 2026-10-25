@@ -161,36 +161,6 @@
     $('today-foot').textContent =
       '本周 ' + integer(week && week.calls) + ' 次 · 30 日 ' + integer(month && month.calls) + ' 次';
     $('today-foot2').textContent = today.credited != null ? '已计费 ' + today.credited + ' 次' : '';
-
-    // series 是整天的 24 个小时桶，末尾那些还没到的小时永远是 0；去尾画 24 小时节奏。
-    const series = today.series || [];
-    let end = series.length;
-    while (end > 1 && !series[end - 1].calls) end -= 1;
-    const hours = series.slice(0, end);
-    const maxCalls = Math.max(1, ...hours.map((h) => h.calls || 0));
-    const peak = hours.reduce((a, h) => ((h.calls || 0) > (a.calls || 0) ? h : a), hours[0] || {});
-    const box = $('rhythm');
-    if (!box.dataset.ready) {
-      const head = el('div', 'rhythm-head');
-      head.append(el('span', null, '24 小时节奏'), el('b'));
-      head.dataset.key = 'head';
-      box.append(head, el('div', 'rhythm-bars'));
-      box.dataset.ready = '1';
-    }
-    const bars = box.querySelector('.rhythm-bars');
-    keyed(bars, hours, (h) => h.label,
-      () => el('i'),
-      (node, h, i) => {
-        const cur = i === hours.length - 1;
-        node.style.height = Math.max(3, share(h.calls || 0, maxCalls)) + '%';
-        node.className = cur ? 'cur' : ((h.calls || 0) ? '' : 'zero');
-        if (h.errors) node.className = (cur ? 'cur' : '') + ' err';
-        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost)
-          + (h.errors ? ' · 失败 ' + integer(h.errors) : '');
-      });
-    box.querySelector('.rhythm-head b').textContent = hours.length
-      ? '峰值 ' + integer(peak.calls || 0) + ' 次 · ' + peak.label + ' 时'
-      : '';
   }
 
   /* ── 额度 ── */
@@ -342,58 +312,41 @@
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
-  /* ── 模型矩阵 ──
-     usage.models 按 provider/model@账号 拆分，这里按模型名聚合成今日矩阵；
-     智能体的活动状态由星系行星表达，成本归属在「令牌消耗明细」窗口。 */
-  function renderModels(today) {
-    const agg = new Map();
-    (today.models || []).forEach((m) => {
-      const key = m.model || String(m.id || '').split(' @ ')[0] || '未知模型';
-      const g = agg.get(key) || { name: key, calls: 0, cost: 0, errors: 0, timed: 0, ttft_ms: 0, decode_ms: 0, decode_out: 0 };
-      g.calls += m.calls || 0;
-      g.cost += m.cost || 0;
-      g.errors += m.errors || 0;
-      g.timed += m.timed || 0;
-      g.ttft_ms += m.ttft_ms || 0;
-      g.decode_ms += m.decode_ms || 0;
-      g.decode_out += m.decode_out || 0;
-      agg.set(key, g);
-    });
-    const all = [...agg.values()].sort((a, b) => (b.cost || 0) - (a.cost || 0));
-    // 两行三列，多出的模型并进「另 N 个」。
-    const models = all.slice(0, 6);
-    if (all.length > 6) {
-      models.push(all.slice(6).reduce((acc, m) => ({
-        name: '另 ' + (all.length - 6) + ' 个',
-        cost: (acc.cost || 0) + (m.cost || 0), calls: (acc.calls || 0) + (m.calls || 0),
-        errors: (acc.errors || 0) + (m.errors || 0)
-      }), {}));
-    }
-    const maxCost = Math.max(0.0001, ...models.map((m) => m.cost || 0));
-    keyed($('model-list'), models, (m) => m.name,
-      () => {
-        const row = el('div', 'a');
-        row.append(el('b'), el('em'), el('span'));
-        const share = el('div', 'share');
-        share.append(el('i'));
-        row.append(share);
-        return row;
-      },
-      (node, m) => {
-        node.children[0].textContent = m.name;
-        node.children[1].textContent = money(m.cost);
-        const bits = [integer(m.calls) + ' 次'];
-        if (m.timed) bits.push('首字 ' + (m.ttft_ms / m.timed / 1000).toFixed(1) + ' 秒');
-        if (m.decode_ms) bits.push(Math.round(m.decode_out / (m.decode_ms / 1000)) + ' 字/秒');
-        if (m.errors) bits.push('失败 ' + m.errors);
-        node.children[2].textContent = bits.join(' · ');
-        // 占比条按成本：钱花在哪块模型上一眼看。
-        node.children[3].firstChild.style.width = share(m.cost || 0, maxCost) + '%';
-        if (m.errors) node.children[3].firstChild.style.background = 'linear-gradient(90deg, #b44a4a, var(--void))';
-        else node.children[3].firstChild.style.background = '';
+  /* ── 节奏脉搏 ──
+     今日模块里的小节奏条并到这里放大：柱高 = 该小时调用量，出错小时柱顶一段红，
+     当前小时点亮冒火花；只画到最新有活动的小时，数据同一份 today.series。 */
+  function renderPulse(today) {
+    const series = today.series || [];
+    let end = series.length;
+    while (end > 1 && !series[end - 1].calls) end -= 1;
+    const hours = series.slice(0, end);
+    const maxCalls = Math.max(1, ...hours.map((h) => h.calls || 0));
+    const peak = hours.reduce((a, h) => ((h.calls || 0) > (a.calls || 0) ? h : a), hours[0] || {});
+    keyed($('pulse-bars'), hours, (h) => h.label,
+      () => el('i'),
+      (node, h, i) => {
+        const cur = i === hours.length - 1;
+        node.style.height = Math.max(3, share(h.calls || 0, maxCalls)) + '%';
+        node.className = cur ? 'cur' : (h.calls ? '' : 'zero');
+        if (h.errors) node.className = (cur ? 'cur ' : '') + 'err';
+        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost)
+          + (h.errors ? ' · 失败 ' + integer(h.errors) : '');
       });
-    if (!models.length) $('model-list').replaceChildren(el('div', 'empty', '等待模型用量'));
-    $('model-foot').textContent = all.length + ' 模型 · 今日 ' + money(today.cost);
+    // 轴标：每 4 小时一个刻度，其余槽位留空对齐柱位。
+    const axis = $('pulse-axis');
+    if (!axis.children.length) {
+      for (let i = 0; i < 24; i += 1) {
+        const tick = el('span');
+        if (i % 4 === 0) tick.textContent = String(i).padStart(2, '0') + ' 时';
+        axis.append(tick);
+      }
+    }
+    const last = hours[hours.length - 1] || {};
+    $('pulse-foot').textContent = hours.length
+      ? '峰值 ' + integer(peak.calls || 0) + ' 次 · ' + peak.label + ' 时 · 现已 ' + integer(last.calls || 0) + ' 次'
+      : '等待今日序列';
+    $('pulse-foot2').textContent = '今日 ' + integer(today.calls) + ' 次'
+      + (today.errors ? ' · 失败 ' + integer(today.errors) : '');
   }
 
   /* ── 最近调用：请求账本（usage/requests）的明细带，两行最新真实调用 ── */
@@ -413,8 +366,8 @@
         out.replaceChildren(el('b', null, compact(r.out)), document.createTextNode(' 出'));
         ms.textContent = r.ms ? (r.ms / 1000).toFixed(1) + ' 秒' : '—';
         cost.textContent = r.priced ? money(r.cost) : '未计价';
-        node.classList.toggle('bad', !!r.status);
-        if (r.status) md.title = 'HTTP ' + r.status;
+        node.classList.toggle('bad', !!r.status && r.status !== 200);
+        if (r.status && r.status !== 200) md.title = 'HTTP ' + r.status;
       });
     if (!rows.length) $('calls-rows').replaceChildren(el('div', 'empty', '等待请求账本'));
   }
@@ -467,6 +420,7 @@
         ms: r.ms || null,
         ttft: r.ttft || null,
         out: r.out || 0,
+        inTok: (r.usage || []).reduce((sum, u) => sum + (u.in || 0), 0),
         tokens: r.tokens || 0,
         tries: (r.tries || []).length,
         elapsed: r.done === false ? Math.max(0, now - start) : (r.ms || null)
@@ -480,6 +434,10 @@
      在途路由停在模型处脉冲等待，快照确认完成后才放行回程。空闲不伪造流量。 */
   const routeReduceQuery = matchMedia('(prefers-reduced-motion: reduce)');
   const ROUTE_C = { request: '#6ff2ff', response: '#9fd1ff', fail: '#ff7a7a', direct: '#b18cff', directBack: '#dcc9ff', link: 'rgba(96, 158, 220, 0.34)', chip: 'rgba(9, 24, 44, 0.85)', edge: 'rgba(96, 158, 220, 0.42)' };
+  /* 光束粗细绑定真实新增 token：请求腿用非缓存输入，回程用输出。缓存读不计入——
+     Claude Code 每次重发几万缓存命中，按总量画永远顶格，反而看不出单次真实用量。
+     下限 1.8：小请求也要在壁纸距离上一眼可辨，不能细到像没在流。 */
+  const beamWidth = (tokens) => 1.8 + Math.min(2.2, Math.log10((tokens || 0) + 1) * 0.55);
   const ROUTE_T = { req1: 700, req2: 800, res1: 1100, res2: 1100, fastK: 0.6 };
   const ROUTE_NODE_TTL = 30000;   // 智能体/模型芯片只在触发后 30 秒内存在，没再触发就退场
   const routeTrips = new Map();   // route id -> 进行中的行程
@@ -869,8 +827,10 @@
       if (node.state === 'out') return Math.max(0, 1 - (now - node.since) / 600);
       return 1;
     };
-    // 布局：在册节点缓动到目标轨道位（稳定序）；再按椭圆参数算出本帧行星坐标（含缓慢轨道漂移）。
-    // sideSign：-1 左侧（智能体），+1 右侧（模型）。node.px/py = 行星当前位置，rx/ry = 轨道半径。
+    // 布局：在册节点缓动到目标轨道位（稳定序）；星球钉在所属一侧的固定纵列上
+    // （智能体在左、模型恒在右），带几像素的正弦漂移。不再按椭圆参数角取点——
+    // 椭圆顶部/底部的 x 收缩，会把上/下的模型星球挤到网关正上/正下方。
+    // sideSign：-1 左侧（智能体），+1 右侧（模型）。node.px/py = 行星当前位置。
     const layout = (reg, sideSign) => {
       if (!reduce) reg.forEach((n) => { if (n.state === 'in' && now - n.since > 500) n.state = 'live'; });
       const live = [...reg.entries()].filter(([, n]) => n.state !== 'out');
@@ -881,16 +841,12 @@
           node.y += (target - node.y) * 0.22;
           if (Math.abs(target - node.y) > 0.75) routeLayoutBusy = true;
         }
-        const rx = Math.min(W * 0.36, 360);
-        const ry = Math.max(44, Math.abs(node.y - cy));
-        // 轨道角：左侧 θ≈π，右侧 θ≈0；叠加缓慢漂移，行星在轨道上轻轻游动。
-        const phi = Math.asin(Math.max(-1, Math.min(1, (node.y - cy) / ry)));
-        const theta0 = sideSign < 0 ? Math.PI - phi : phi;
-        const drift = reduce ? 0 : Math.sin(now / 4200 + i * 2.1) * 0.055;
-        const theta = theta0 + drift;
-        node.rx = rx; node.ry = ry;
-        node.px = cx + rx * Math.cos(theta);
-        node.py = cy + ry * Math.sin(theta);
+        const R = Math.min(W * 0.36, 360);
+        const drift = reduce ? 0 : Math.sin(now / 4200 + i * 2.1);
+        node.rx = R;
+        node.ry = Math.max(44, Math.abs(node.y - cy));
+        node.px = cx + sideSign * R + drift * 4;
+        node.py = node.y + drift * 3;
       });
       reg.forEach((node) => {
         if (node.state === 'out' && node.y != null && node.px == null) {
@@ -1299,6 +1255,7 @@
     const minDelta = moving ? 1000 / 30 : breathing ? 1000 / 24 : 1000 / 8;
     if (ts - routeLastTs >= minDelta) {
       routeLastTs = ts;
+      routeLastFrameAt = ts;
       try {
         drawRouteStage(ts, rows, routeTick.todayCalls || 0);
       } catch (err) {
@@ -1308,6 +1265,20 @@
     }
     routeRaf = requestAnimationFrame(routeTick);
   }
+
+  /* 节流看门狗：App Nap/窗口遮挡会把 rAF 压到约 1 帧/秒甚至停摆——星球还在，
+     token 光束却一帧跳完甚至完全不播，看起来就是「有请求但没有流向」。
+     定时器在节流下仍会以 ≥1s 粒度触发，看门狗发现 rAF 停摆超过 1.6 秒就代推一帧；
+     rAF 恢复后自动退位。 */
+  let routeLastFrameAt = 0;
+  setInterval(() => {
+    if (routeReduceQuery.matches) return;
+    if (!routeRaf) return;                       // 循环本来就该静止（空闲自停），不插手
+    if (!(routeTick.rows || []).length) return;
+    if (performance.now() - routeLastFrameAt < 1600) return;
+    routeLastTs = 0;
+    routeTick(performance.now());
+  }, 1000);
 
   function renderRouteStage(bundle) {
     const rows = readLive(bundle.trace);
@@ -1358,7 +1329,7 @@
         trip = {
           id: r.id, agent: r.agent, model: r.model,
           phase: 'req1', startedAt: now,
-          color: ROUTE_C.request, width: 1.4 + Math.min(2.2, Math.log10((r.tokens || 1) + 1) * 0.55),
+          color: ROUTE_C.request, width: beamWidth(r.inTok),
           park: !r.done, fast: r.done, out: r.out || 0, bad: r.bad
         };
         routeTrips.set(r.id, trip);
@@ -1366,7 +1337,7 @@
         trip.phase = 'res1';
         trip.startedAt = now;
         trip.color = r.bad ? ROUTE_C.fail : ROUTE_C.response;
-        trip.width = 1.4 + Math.min(2.2, Math.log10((r.out || 1) + 1) * 0.55);
+        trip.width = beamWidth(r.out);
         trip.bad = r.bad;
       }
     });
@@ -1379,7 +1350,7 @@
       routeTrips.set(key, {
         id: key, kind: 'direct', agent: r.agent, model: r.served || r.model,
         phase: 'd1', startedAt: now,
-        color: ROUTE_C.direct, width: 1.4 + Math.min(2.2, Math.log10(((r.in || 0) + (r.out || 0) || 1) + 1) * 0.55),
+        color: ROUTE_C.direct, width: beamWidth((r.in || 0) + (r.out || 0)),
         park: false, fast: true, out: r.out || 0, bad: !!r.status
       });
     });
@@ -1445,7 +1416,7 @@
     const { today, week, month, quotas, history, requests, info } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas, history);
-    renderModels(today);
+    renderPulse(today);
     renderCalls(requests);
     renderRouteStage(bundle);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
