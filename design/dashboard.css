@@ -449,8 +449,9 @@ main {
   padding-right: 4px;
 }
 .q-list::-webkit-scrollbar { width: 0; }
-/* 每个账号一个机架单元：细框 + 微底色，状态异常时整格带一层淡色警示 */
+/* 每个账号一个机架单元：细框 + 微底色，状态异常时整格带一层淡色警示。 */
 .q-group {
+  position: relative;
   min-width: 0;
   border: 1px solid var(--hair);
   border-radius: 2px;
@@ -563,6 +564,58 @@ main {
 .q-group.st-bad.gone .q-bar i { background: rgba(180, 74, 74, 0.5); box-shadow: none; }
 .q-group.st-bad.gone .q-bar i::after { animation: none; opacity: 0; }
 
+/* 回答中：对齐 magpie 路由页账号行（li.on + livedot + 回答中）。
+   实心青点、一圈涟漪、亮框、燃料条提成冰色。余量数字仍在，不藏读数。 */
+.q-group.live {
+  z-index: 1;
+  border-color: var(--live);
+  background-color: rgba(6, 38, 52, 0.55);
+  background-image: linear-gradient(180deg, rgba(111, 242, 255, 0.10), transparent 48%);
+}
+.q-group.live.st-warn,
+.q-group.live.st-bad { border-color: var(--live); }
+.q-group.live > h3::before {
+  width: 6px;
+  height: 6px;
+  top: 2px;
+  background: var(--live);
+  box-shadow: 0 0 8px rgba(111, 242, 255, 0.95);
+}
+.q-group.live > h3::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(111, 242, 255, 0.7);
+  animation: qlive-ring 1.8s ease-out infinite;
+  pointer-events: none;
+}
+.q-group > h3 em.live {
+  color: var(--live);
+  text-shadow: 0 0 10px rgba(111, 242, 255, 0.75);
+  animation: none;
+}
+.q-group.live .q-bar i {
+  background: linear-gradient(90deg, #8ad4e0, var(--live));
+  box-shadow: 0 0 10px rgba(111, 242, 255, 0.7);
+}
+.q-group.live.st-bad.gone .q-bar i {
+  background: rgba(180, 74, 74, 0.5);
+  box-shadow: none;
+}
+.q-group.live .q-bar i::after {
+  animation-duration: 1.5s;
+  background: linear-gradient(90deg, transparent, rgba(230, 255, 255, 0.9), transparent);
+}
+.q-group.live .q-bar i span { animation-duration: 1.15s; }
+@keyframes qlive-ring {
+  0% { transform: scale(0.7); opacity: 0.85; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
 /* 主读数行：窗口名 + 大号剩余% + 重置倒计时 */
 .q-main { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; min-width: 0; }
 .q-main b { font-size: 10px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -582,6 +635,11 @@ main {
 .q-group.st-bad .q-main em { color: var(--void); text-shadow: 0 0 12px rgba(255, 122, 122, 0.6); animation: urgency 1.8s ease-in-out infinite; }
 .q-group.st-bad.gone .q-main em { animation: urgency 1.1s ease-in-out infinite; }
 .q-group.st-warn .q-main span { color: var(--amber); }
+.q-group.live .q-main em {
+  color: var(--live);
+  text-shadow: 0 0 14px rgba(111, 242, 255, 0.55);
+  animation: none;
+}
 
 .q-sub { margin-top: 2px; color: var(--dim); font-size: 9px; line-height: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 

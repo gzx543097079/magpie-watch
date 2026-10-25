@@ -30,6 +30,7 @@
 
   let maskOn = true;
   let settleTimer = 0;
+  let anatomyResizeTimer = 0;
   let online = true;
   let lastGood = null;
 
@@ -185,7 +186,69 @@
     return { name: line.name, etaH };
   }
   const etaText = (h) => h < 1 ? Math.max(1, Math.round(h * 60)) + ' 分钟' : h < 48 ? h.toFixed(1) + ' 小时' : Math.round(h / 24) + ' 天';
-  function renderQuotas(quotas, history) {
+
+  /** 在途请求正在抽的账号。try.id 经 route.order 解出 who，对不上就不点亮。 */
+  function liveByAccount(trace) {
+    const map = new Map();
+    ((trace && trace.routes) || []).forEach((route) => {
+      if (route.done !== false) return;
+      const order = route.order || [];
+      (route.tries || []).forEach((t) => {
+        if (t.done !== false) return;
+        const id = String(t.id || '');
+        const hit = order.find((o) => o.id === id);
+        let provider = String((hit && hit.provider) || route.provider || '').toLowerCase();
+        let user = String((hit && hit.who) || '').toLowerCase();
+        if (!user && id.includes('@')) {
+          const cut = id.indexOf('@');
+          provider = provider || id.slice(0, cut).toLowerCase();
+          user = id.slice(cut + 1).toLowerCase();
+        }
+        if (!provider || !user) return;
+        const key = provider + '|' + user;
+        map.set(key, (map.get(key) || 0) + 1);
+      });
+    });
+    return map;
+  }
+
+  let quotaLiveKeys = new Set();
+  let quotaBlipTimer = 0;
+  function syncQuotaLive(trace) {
+    const live = liveByAccount(trace);
+    const now = new Set(live.keys());
+    const rose = [...now].some((k) => !quotaLiveKeys.has(k));
+    quotaLiveKeys = now;
+    document.querySelectorAll('#quota-list .q-group[data-acct]').forEach((node) => {
+      const n = live.get(node.dataset.acct) || 0;
+      node.classList.toggle('live', n > 0);
+      const em = node.querySelector('h3 em');
+      if (!em) return;
+      if (n > 0) {
+        em.textContent = n > 1 ? '回答中 ×' + n : '回答中';
+        em.classList.add('live');
+      } else {
+        em.textContent = em.dataset.status || em.textContent;
+        em.classList.remove('live');
+      }
+    });
+    const note = $('quota-note');
+    if (note && note.dataset.base != null) {
+      note.textContent = live.size ? note.dataset.base + ' · 回答中 ' + live.size : note.dataset.base;
+    }
+    if (rose) {
+      const mod = $('quota-mod');
+      if (mod) {
+        mod.classList.remove('blip');
+        void mod.offsetWidth;
+        mod.classList.add('blip');
+        clearTimeout(quotaBlipTimer);
+        quotaBlipTimer = setTimeout(() => mod.classList.remove('blip'), 700);
+      }
+    }
+  }
+
+  function renderQuotas(quotas, history, trace) {
     const accounts = quotas.data || [];
     // 整块右侧全给额度：按账号分组，每个账号列出它所有窗口，不折叠、不裁切。
     const groups = accounts.map((q) => {
@@ -261,7 +324,10 @@
         node.classList.remove('st-ok', 'st-warn', 'st-bad', 'gone');
         node.classList.add(st >= 2 ? 'st-bad' : (st === 1 ? 'st-warn' : 'st-ok'));
         if (st >= 3) node.classList.add('gone');
-        head.children[2].textContent = ['正常', '临近重置', '紧张', '用尽'][st];
+        node.dataset.acct = String(g.q.provider || '').toLowerCase() + '|' + String(g.q.user || '').toLowerCase();
+        const status = ['正常', '临近重置', '紧张', '用尽'][st];
+        head.children[2].dataset.status = status;
+        head.children[2].textContent = status;
         head.children[2].className = st >= 3 ? 'on out' : (st >= 2 ? 'on bad' : (st === 1 ? 'on warn' : 'on'));
 
         // 燃料计取最紧窗口；其余窗口折进小字行。
@@ -302,7 +368,10 @@
       .sort((a, b) => new Date(a.resetsAt) - new Date(b.resetsAt))[0];
     const noWin = groups.filter((g) => !g.wins.length).length;
     const fastest = shown.map((g) => g.eta).filter(Boolean).sort((a, b) => a.etaH - b.etaH)[0];
-    $('quota-note').textContent = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 按余量升序';
+    const note = $('quota-note');
+    note.dataset.base = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 按余量升序';
+    note.textContent = note.dataset.base;
+    syncQuotaLive(trace);
     $('quota-foot').textContent = nearest ? '最近重置 · ' + resetText(nearest.resetsAt) : '';
     $('quota-foot').classList.toggle('soon',
       !!nearest && (new Date(nearest.resetsAt) - Date.now()) / 60000 < 90);
@@ -404,9 +473,9 @@
 
   /* ── 主循环 ── */
   function paint(bundle) {
-    const { today, week, month, quotas, history, requests, info } = bundle;
+    const { today, week, month, quotas, history, requests, info, trace } = bundle;
     renderToday(today, week, month);
-    renderQuotas(quotas, history);
+    renderQuotas(quotas, history, trace);
     renderPulse(today);
     renderCalls(requests);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
@@ -484,7 +553,7 @@
   setInterval(tickClock, 1000);
 
   /* 轮询分两层：主循环 4 秒全量；快循环 1 秒只拉 trace 与请求账本，
-     请求解剖和最近调用因此接近实时。trace 只用于当前在途计数。 */
+     最近调用与额度「回答中」因此接近实时。trace 只用于当前在途。 */
   (async function loop() {
     for (;;) {
       await refresh();
@@ -504,6 +573,7 @@
       lastGood.trace = trace;
       if (requests) lastGood.requests = requests;
       renderCalls(lastGood.requests);
+      syncQuotaLive(trace);
     } catch (error) {
       // 快循环失败不打扰画面：网关状态交给主循环判定。
     } finally {
