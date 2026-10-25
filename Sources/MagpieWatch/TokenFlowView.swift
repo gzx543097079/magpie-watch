@@ -58,7 +58,7 @@ struct TokenFlowView: View {
     }
 
     private var accessibilitySummary: String {
-        "Token 流向，\(route.tokenScopeText)。上行缓存 \(Fmt.compact(route.cacheTokens))，输入 \(Fmt.compact(route.inputTokens))，下行输出 \(Fmt.compact(route.outputTokens))"
+        "令牌流向，\(route.tokenScopeText)。上行缓存 \(Fmt.compact(route.cacheTokens))，输入 \(Fmt.compact(route.inputTokens))，下行输出 \(Fmt.compact(route.outputTokens))"
     }
 
     private var flowCanvas: some View {
@@ -100,7 +100,7 @@ struct TokenFlowView: View {
                 }
             }
             if route.tokensPerSec > 0 {
-                Text("\(Int(route.tokensPerSec.rounded())) tok/s")
+                Text("\(Int(route.tokensPerSec.rounded())) 字/秒")
                     .font(.custom(WatchTheme.monoFont, size: style == .cinematic ? 12 : 8))
                     .foregroundStyle(palette.amber.opacity(0.92))
             }

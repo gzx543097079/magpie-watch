@@ -11,6 +11,7 @@
   <header>
     <div class="brand"><img src="magpie-bird.svg" alt="">MAGPIE<em>数据观测台</em></div>
     <div class="meta">
+      <span class="gw-meta" id="gw-meta"></span>
       <span class="gw"><i class="led"></i><b id="gw-label">网关在线</b></span>
       <time class="clock" id="clock"></time>
     </div>
@@ -18,41 +19,32 @@
 
   <main>
     <section class="mod quota-mod c4 r1">
-      <h2><span class="tt">账号额度 <i class="code">ACC.QUOTA</i></span><small id="quota-note"></small></h2>
+      <h2><span class="tt">账号额度 <i class="code">电源墙</i></span><small id="quota-note"></small></h2>
       <div class="body q-list" id="quota-list"></div>
       <div class="mod-foot"><span id="quota-foot"></span><span id="quota-foot2"></span></div>
     </section>
 
     <section class="mod c8 r1">
-      <h2><span class="tt">今日 <i class="code">TODAY</i></span><small id="today-note"></small></h2>
-      <div class="body today-grid">
-        <div class="today-main">
-          <div class="hero-row">
-            <div class="hero"><b id="cost">—</b><span>今日支出</span></div>
-            <div class="cache">
-              <div class="cache-top"><b id="cache-rate">—</b><span>缓存命中率</span></div>
-              <div class="track"><i id="cache-bar"></i></div>
-              <div class="cache-sub" id="cache-sub"></div>
-            </div>
+      <h2><span class="tt">今日 <i class="code">仪表盘</i></span><small id="today-note"></small></h2>
+      <div class="body today-body">
+        <div class="hero-row">
+          <div class="hero"><b id="cost">—</b><span>今日支出</span></div>
+          <div class="cache">
+            <div class="cache-top"><b id="cache-rate">—</b><span>缓存命中率</span></div>
+            <div class="track"><i id="cache-bar"></i></div>
+            <div class="cache-sub" id="cache-sub"></div>
           </div>
-          <div class="flow" id="flow1"></div>
-          <div class="cells" id="cells"></div>
+          <div class="mini"><span>生成速度</span><b id="mini-speed">—</b></div>
+          <div class="mini"><span>首字</span><b id="mini-ttft">—</b></div>
         </div>
-        <div class="today-side">
-          <div class="equiv" id="equiv">
-            <span>DeepSeek 等价</span>
-            <b id="equiv-usd">—</b>
-            <em id="equiv-note"></em>
-          </div>
-          <div class="flow" id="flow2"></div>
-          <div class="recent-hours" id="recent-hours"></div>
-        </div>
+        <div class="flow" id="flow"></div>
+        <div class="cells" id="cells"></div>
       </div>
       <div class="mod-foot"><span id="today-foot"></span><span id="today-foot2"></span></div>
     </section>
 
     <section class="mod c8 r2" id="route-mod">
-      <h2><span class="tt">实时链路 <i class="code">LIVE.ROUTE</i></span><small id="route-note">智能体 → 网关 → 模型 · 4 秒快照回放</small></h2>
+      <h2><span class="tt">实时链路 <i class="code">星系</i></span><small id="route-note">智能体 → 网关 → 模型 · 4 秒快照回放</small></h2>
       <div class="body route-body">
         <canvas id="route-canvas"></canvas>
       </div>
@@ -60,17 +52,23 @@
     </section>
 
     <section class="mod c8 r3">
-      <h2><span class="tt">智能体 <i class="code">AGENTS</i></span><small>成本 · 延迟</small></h2>
-      <div class="body agents-wide" id="agent-list"></div>
-      <div class="mod-foot"><span id="agent-foot"></span></div>
+      <h2><span class="tt">节奏 <i class="code">脉搏</i></span><small>24 小时 · 调用 · 失败</small></h2>
+      <div class="body pulse-body">
+        <div class="pulse-bars" id="pulse-bars"></div>
+        <div class="pulse-axis" id="pulse-axis"></div>
+      </div>
+      <div class="calls">
+        <span class="calls-t">最近调用 <em>请求账本</em></span>
+        <div id="calls-rows"></div>
+      </div>
+      <div class="mod-foot"><span id="pulse-foot"></span><span id="pulse-foot2"></span></div>
     </section>
   </main>
 
   <footer>
     <span id="source-note">数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽</span>
     <span>缓存读不计入计价 · 推理包含在输出内</span>
-  </footer>
-</div>
+  </footer></div>
 <script src="dashboard.js"></script>
 </body>
 </html>

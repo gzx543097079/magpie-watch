@@ -16,7 +16,7 @@
   --void: #ff7a7a;
   --amber: #ffbc7d;
   --surface: #020912;
-  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --mono: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
   /* 机柜四角角标的颜色：常态青光，blip 时提亮，离线时转红 */
   --tick-c: rgba(111, 242, 255, 0.62);
 }
@@ -155,6 +155,8 @@ header {
   min-width: 0;
 }
 
+.gw-meta { font-family: var(--mono); color: var(--dim2); font-size: 9.5px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
 /* 网关状态灯：在线青色常亮，离线红色常亮——光只表达状态，不空转 */
 .gw { display: inline-flex; align-items: center; gap: 7px; }
 .gw b { font-weight: 500; color: var(--muted); letter-spacing: 0.08em; }
@@ -184,8 +186,8 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体）。 */
-  grid-template-rows: minmax(0, 24fr) minmax(0, 60fr) minmax(0, 16fr);
+  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体+最近调用）。 */
+  grid-template-rows: minmax(0, 24fr) minmax(0, 57fr) minmax(0, 19fr);
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -321,22 +323,13 @@ main {
 .c8 { grid-column: span 8; }
 .c12 { grid-column: span 12; }
 
-/* 今日：左侧主读数，右侧等价与流量；一屏放得下，不再竖向溢出 */
-.today-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 0 34px;
-  align-items: start;
-}
-.today-main, .today-side { min-width: 0; }
-.today-side { border-left: 1px solid var(--hair); padding-left: 26px; }
-
-/* 今日 */
-.hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+/* 今日：一行仪表（支出巨字 + 缓存率 + 速度/首字迷你表）→ 流程一行 → 五格 → 节奏图 */
+.today-body { display: flex; flex-direction: column; }
+.hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; }
 .hero { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .hero b {
   font-family: var(--mono);
-  font-size: 45px;
+  font-size: 48px;
   font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 0.9;
@@ -351,12 +344,12 @@ main {
   0% { text-shadow: 0 0 36px rgba(150, 250, 255, 1), 0 0 10px rgba(200, 250, 255, 0.9); color: #e2fbff; }
 }
 
-/* 缓存命中率：与今日支出同高的一等读数，不再藏在小格子里 */
-.cache { flex: 0 1 150px; min-width: 0; }
+/* 缓存命中率：一等读数，带余量条 */
+.cache { flex: 0 1 170px; min-width: 0; }
 .cache-top { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .cache-top b {
   font-family: var(--mono);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -371,58 +364,76 @@ main {
 }
 .cache-sub { color: var(--dim); font-size: 9px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* DeepSeek 等价美元：Magpie 侧记为免费，按官方单价折算后单列一行 */
-.equiv {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  font-size: 10px;
-  color: var(--muted);
-  min-width: 0;
-}
-.equiv span { letter-spacing: 0.06em; white-space: nowrap; }
-.equiv b {
+/* 迷你仪表：速度 / 首字，右对齐小栈 */
+.mini { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding-left: 18px; border-left: 1px solid var(--hair); }
+.mini span { color: var(--muted); font-size: 9px; letter-spacing: 0.06em; white-space: nowrap; }
+.mini b {
   font-family: var(--mono);
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 500;
   letter-spacing: -0.02em;
-  color: var(--live);
-  text-shadow: 0 0 18px rgba(111, 242, 255, 0.7), 0 0 4px rgba(160, 245, 255, 0.5);
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 0 12px rgba(111, 242, 255, 0.3);
 }
-.equiv em { flex: 1 1 100%; font-style: normal; font-size: 9px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.flow { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 4px 0; color: var(--dim); font-size: 10.5px; }
+/* 通用细轨（缓存命中率等） */
+.track { height: 3px; background: #123048; margin: 3px 0 2px; overflow: hidden; }
+.track i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); }
+
+.flow { margin-top: 11px; display: flex; flex-wrap: wrap; gap: 4px 0; color: var(--dim); font-size: 10.5px; }
 .flow i { font-style: normal; margin: 0 7px; color: #2f4358; }
 .flow b { font-family: var(--mono); color: var(--ink); font-weight: 500; }
 
-/* 本周 / 30 日 / 总 tok / 每调用：一行四个读数 */
-.cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-.cells span { display: block; color: var(--dim); font-size: 9.5px; letter-spacing: 0.05em; margin-bottom: 2px; }
-.cells b { font-family: var(--mono); font-size: 17px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
+/* 一行四个读数：本周 / 30 日 / 总 tok / 等价 */
+.cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 11px; }
+.cells span { display: block; color: var(--dim); font-size: 9px; letter-spacing: 0.05em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cells b { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
 
-/* 最近三小时：右栏底部，三行柱状读数 */
-.recent-hours > span {
+/* 节奏脉搏：右下模块的 24 小时柱场。今日模块里的小条带已并入这里：
+   柱高 = 该小时调用量，当前小时点亮冒火花，出错小时柱顶一段红。 */
+.pulse-body { display: flex; flex-direction: column; min-height: 0; }
+.pulse-bars { flex: 1 1 0; min-height: 0; display: flex; align-items: flex-end; gap: 3px; }
+.pulse-bars i {
+  flex: 1 1 0;
+  min-width: 3px;
   display: block;
-  color: var(--dim);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 5px;
+  position: relative;
+  background: rgba(47, 127, 214, 0.4);
+  border-top: 1px solid rgba(111, 242, 255, 0.35);
 }
-.recent-hours { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair); }
-.rh {
-  display: grid;
-  grid-template-columns: 34px 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 3px 0;
-  font-size: 10.5px;
-  color: var(--muted);
+.pulse-bars i.cur {
+  background: linear-gradient(180deg, var(--live), rgba(47, 127, 214, 0.5));
+  box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
 }
-.rh b { font-family: var(--mono); color: var(--ink); font-weight: 500; }
-.rh .track { margin: 0; }
-.rh em { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; }
+/* 当前小时冒出的荧光火花：此刻有活动的小时才会「冒烟」 */
+.pulse-bars i.cur::before,
+.pulse-bars i.cur::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: #dffcff;
+  box-shadow: 0 0 5px rgba(111, 242, 255, 0.95);
+  animation: rise 1.7s ease-out infinite;
+}
+.pulse-bars i.cur::after { animation-delay: 0.85s; }
+.pulse-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
+/* 出过错的小时：柱顶一段红，故障时段一眼可辨 */
+.pulse-bars i.err {
+  background: linear-gradient(180deg, rgba(255, 122, 122, 0.65) 0 3px, rgba(47, 127, 214, 0.4) 3px);
+  border-top-color: rgba(255, 122, 122, 0.8);
+}
+/* 轴标：每 4 小时一个刻度，与柱位同宽对齐 */
+.pulse-axis { flex: none; display: flex; gap: 3px; margin-top: 5px; }
+.pulse-axis span { flex: 1 1 0; min-width: 3px; color: var(--dim2); font-family: var(--mono); font-size: 8px; letter-spacing: 0.04em; white-space: nowrap; overflow: visible; }
+@keyframes rise {
+  from { transform: translate(-50%, 1px); opacity: 0.95; }
+  to { transform: translate(-50%, -15px); opacity: 0; }
+}
 
 /* 额度：左栏三分之一整列。账号之间留白，窗口之间只留一条细线，不靠边框分隔。 */
 .quota-mod { grid-row: 1 / -1; }
@@ -431,19 +442,29 @@ main {
   grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: min-content;
   align-content: start;
-  row-gap: 9px;
+  row-gap: 12px;
   /* 账号多到一屏放不下时整列滚动，绝不裁掉最后几个账号。 */
   overflow-y: auto;
   scrollbar-width: none;
+  padding-right: 4px;
 }
 .q-list::-webkit-scrollbar { width: 0; }
-.q-group { min-width: 0; }
-.q-rows { min-width: 0; display: flex; flex-direction: column; }
+/* 每个账号一个机架单元：细框 + 微底色，状态异常时整格带一层淡色警示 */
+.q-group {
+  min-width: 0;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 8px 12px 9px;
+  background: rgba(13, 28, 48, 0.38);
+  background-image: linear-gradient(180deg, rgba(111, 242, 255, 0.025), transparent 34%);
+}
+.q-group.st-warn { background-color: rgba(58, 42, 22, 0.32); border-color: rgba(255, 188, 125, 0.22); }
+.q-group.st-bad { background-color: rgba(56, 24, 26, 0.34); border-color: rgba(255, 122, 122, 0.26); }
 
 /* 账号名是这一组的主语：字号比窗口名大一档，前面一枚发光圆点 */
 .q-group > h3 {
-  margin: 0 0 3px;
-  font-size: 11px;
+  margin: 0 0 4px;
+  font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--ink);
@@ -468,36 +489,42 @@ main {
 .q-group > h3 b { font-weight: 500; color: var(--ink); letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-group > h3 i { flex: none; font-style: normal; color: var(--dim2); font-size: 8.5px; letter-spacing: 0.04em; }
 .q-group > h3 i:not(:empty) { margin-left: 2px; }
-.q-group > h3 em { flex: none; margin-left: auto; font-style: normal; font-size: 8px; letter-spacing: 0.06em; color: var(--dim2); }
+.q-group > h3 em { flex: none; margin-left: auto; font-style: normal; font-size: 9.5px; font-weight: 500; letter-spacing: 0.08em; color: var(--dim2); }
 .q-group > h3 em.on { color: var(--live); text-shadow: 0 0 8px rgba(111, 242, 255, 0.5); }
+.q-group > h3 em.warn { color: var(--amber); text-shadow: 0 0 8px rgba(255, 188, 125, 0.55); }
+.q-group > h3 em.bad { color: var(--void); text-shadow: 0 0 8px rgba(255, 122, 122, 0.6); }
+.q-group > h3 em.out { color: var(--void); text-shadow: 0 0 8px rgba(255, 122, 122, 0.7); animation: urgency 1.6s ease-in-out infinite; }
+/* 账号状态灯：跟着账号状态变色（正常蓝 / 临近琥珀 / 紧张用尽红），一列扫下来先看灯 */
+.q-group.st-warn > h3::before { background: var(--amber); box-shadow: 0 0 8px rgba(255, 188, 125, 0.9); }
+.q-group.st-bad > h3::before { background: var(--void); box-shadow: 0 0 9px rgba(255, 122, 122, 0.95); }
 
-/* 一行一个窗口：名字与百分比同行，余量条与重置信息在下面，行间靠留白而不是边框 */
-.q { padding: 2px 0 3px; min-width: 0; }
-.q + .q { border-top: 1px solid var(--hair); }
-.q-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; line-height: 14px; }
-.q-top b { font-size: 11.5px; font-weight: 400; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.q-top em {
-  font-family: var(--mono);
-  flex: none;
-  margin-left: auto;
-  font-style: normal;
-  font-size: 12px;
-  font-weight: 600;
-  color: #dceaf8;
-  text-shadow: 0 0 10px rgba(74, 163, 255, 0.35);
+/* 电源墙：每账号一条大燃料计——带刻度的粗燃料条 + 大号剩余百分比。
+   条上滑过的高光是「通电」感；颜色随账号状态（蓝 → 琥珀 → 红）。 */
+.q-bar {
+  position: relative;
+  height: 6px;
+  background: rgba(18, 38, 60, 0.9);
+  border-radius: 1px;
+  overflow: hidden;
 }
-.q .track { height: 3px; background: var(--track); margin: 3px 0 3px; }
-.track { height: 2px; background: var(--track); margin: 3px 0 2px; }
-.track i {
+/* 25/50/75 刻度：仪表感 */
+.q-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), rgba(140, 190, 235, 0.22) calc(25% - 1px), rgba(140, 190, 235, 0.22) 25%);
+  pointer-events: none;
+}
+.q-bar i {
   display: block;
   position: relative;
-  overflow: hidden;
   height: 100%;
+  width: 0;
   background: linear-gradient(90deg, var(--mark-soft), var(--mark));
-  box-shadow: 0 0 7px rgba(74, 163, 255, 0.5);
+  box-shadow: 0 0 8px rgba(74, 163, 255, 0.55);
+  transition: width 0.5s ease;
 }
-/* 余量条上滑过的一小段高光：额度机柜的「通电」感，只挂在额度条上 */
-.q .track i::after {
+.q-bar i::after {
   content: '';
   position: absolute;
   top: 0;
@@ -506,20 +533,57 @@ main {
   background: linear-gradient(90deg, transparent, rgba(220, 246, 255, 0.55), transparent);
   animation: glide 6s linear infinite;
 }
+/* 电流粒子：燃料条里两颗沿填充长度流动的荧光点——有余量才有电流，用尽的条是死的 */
+.q-bar i span {
+  position: absolute;
+  top: 50%;
+  margin-top: -1.5px;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #e4fdff;
+  box-shadow: 0 0 6px rgba(111, 242, 255, 0.95);
+  animation: qflow 3s linear infinite;
+}
+.q-bar i span.qp2 { animation-delay: 1.5s; }
+@keyframes qflow {
+  from { left: 0; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  to { left: calc(100% - 3px); opacity: 0; }
+}
+.q-group.st-bad.gone .q-bar i span { display: none; }
 @keyframes glide {
   from { transform: translateX(-40px); }
   to { transform: translateX(400px); }
 }
-.q-sub { color: var(--dim); font-size: 9px; line-height: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.q-sub b { font-family: var(--mono); font-weight: 400; }
-/* 临近重置走琥珀通道；红色（低余量）更急，写在后面覆盖它 */
-.q.soon .q-top em { color: var(--amber); text-shadow: 0 0 10px rgba(255, 188, 125, 0.55); }
-.q.low .q-top em { color: var(--void); text-shadow: 0 0 10px rgba(255, 122, 122, 0.6); animation: urgency 2.2s ease-in-out infinite; }
-.q.low .track i { background: linear-gradient(90deg, #b44a4a, var(--void)); box-shadow: 0 0 8px rgba(255, 122, 122, 0.55); }
-/* 用尽的窗口：读数短促闪烁，行不消失 */
-.q.out .q-top em { color: var(--void); animation: urgency 1.1s ease-in-out infinite; }
-.q.out .track i { background: rgba(180, 74, 74, 0.5); box-shadow: none; }
-.q.out .track i::after { animation: none; opacity: 0; }
+.q-group.st-warn .q-bar i { background: linear-gradient(90deg, #a06a2f, var(--amber)); box-shadow: 0 0 8px rgba(255, 188, 125, 0.55); }
+.q-group.st-bad .q-bar i { background: linear-gradient(90deg, #b44a4a, var(--void)); box-shadow: 0 0 8px rgba(255, 122, 122, 0.6); }
+.q-group.st-bad.gone .q-bar i { background: rgba(180, 74, 74, 0.5); box-shadow: none; }
+.q-group.st-bad.gone .q-bar i::after { animation: none; opacity: 0; }
+
+/* 主读数行：窗口名 + 大号剩余% + 重置倒计时 */
+.q-main { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; min-width: 0; }
+.q-main b { font-size: 10px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-main em {
+  font-family: var(--mono);
+  flex: none;
+  font-style: normal;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: #dceaf8;
+  text-shadow: 0 0 12px rgba(74, 163, 255, 0.45);
+}
+.q-main span { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--dim); white-space: nowrap; }
+.q-group.st-warn .q-main em { color: var(--amber); text-shadow: 0 0 12px rgba(255, 188, 125, 0.55); }
+.q-group.st-bad .q-main em { color: var(--void); text-shadow: 0 0 12px rgba(255, 122, 122, 0.6); animation: urgency 1.8s ease-in-out infinite; }
+.q-group.st-bad.gone .q-main em { animation: urgency 1.1s ease-in-out infinite; }
+.q-group.st-warn .q-main span { color: var(--amber); }
+
+.q-sub { margin-top: 2px; color: var(--dim); font-size: 9px; line-height: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 
 @keyframes urgency {
   0%, 100% { opacity: 1; }
@@ -538,9 +602,9 @@ main {
 .q-idle b { flex: none; font-weight: 400; font-size: 10px; color: var(--muted); letter-spacing: 0.03em; }
 .q-idle span { color: var(--dim2); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 智能体 */
-.agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
-.a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0; border-bottom: 1px solid var(--hair); }
+/* 会话排行：一行一会话，名字 + 费用 + 明细 + 费用占比条（复用 .models-wide 三列网格） */
+.models-wide, .agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
+.a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--hair); }
 .a:last-child { border-bottom: 0; }
 .a b { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .a em {
@@ -554,6 +618,40 @@ main {
 }
 .a b, .a em { line-height: 15px; }
 .a span { grid-column: 1 / -1; color: var(--dim); font-size: 9px; line-height: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 调用占比：名字下一条细轨，宽度 = 该智能体调用数 / 最活跃智能体 */
+.a .share { grid-column: 1 / -1; height: 2px; background: rgba(30, 60, 95, 0.5); margin-top: 2px; }
+.a .share i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); box-shadow: 0 0 5px rgba(74, 163, 255, 0.4); }
+
+/* 最近调用：智能体模块底部的请求账本明细带，一行一条真实调用 */
+.calls { flex: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--hair); }
+.calls-t {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+.calls-t em { font-style: normal; color: var(--dim2); letter-spacing: 0.03em; }
+.c-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 0.7fr) minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.c-row > span { overflow: hidden; text-overflow: ellipsis; }
+.c-row .t { color: var(--dim); }
+.c-row .md { color: var(--ink); }
+.c-row b { color: var(--ink); font-weight: 500; }
+.c-row span:nth-child(n+4) { text-align: right; }
+.c-row.bad .md, .c-row.bad b { color: var(--void); }
+.c-row.fresh { animation: rowIn 0.6s ease-out; }
+@keyframes rowIn { from { background: rgba(111, 242, 255, 0.14); } to { background: transparent; } }
 
 /* 实时链路：智能体 → 网关 → 模型的快照回放舞台，右栏的主视觉；网关待机呼吸由画布绘制 */
 .route-body { position: relative; }
@@ -582,6 +680,30 @@ body.offline main { opacity: 0.72; }
 body.offline .wall { transition: opacity 0.4s ease; }
 body.offline .mod { --tick-c: rgba(255, 122, 122, 0.4); }
 body.offline::after { animation-play-state: paused; opacity: 0.4; }
+
+/* 屏保概览模式：全屏（屏保）时降噪——细节层退场，一眼读数放大，星系占更大。
+   桌面态不受影响，仍是全量数据面板。 */
+body.fullscreen .hero b { font-size: 64px; }
+body.fullscreen .hero-row { gap: 30px; }
+body.fullscreen .cache { flex-basis: 210px; }
+body.fullscreen .cache-top b { font-size: 32px; }
+body.fullscreen .mini { display: none; }
+body.fullscreen .cells b { font-size: 20px; }
+body.fullscreen .cells span { font-size: 10px; }
+body.fullscreen .flow { display: none; }
+body.fullscreen .q-sub, body.fullscreen .q-idle { display: none; }
+body.fullscreen .q-main em { font-size: 26px; }
+body.fullscreen .q-main b { font-size: 11px; }
+body.fullscreen .q-main span { font-size: 10.5px; }
+body.fullscreen .q-bar { height: 8px; }
+body.fullscreen .q-group > h3 { font-size: 12.5px; }
+body.fullscreen .q-group > h3 em { font-size: 10.5px; }
+body.fullscreen main { grid-template-rows: minmax(0, 27fr) minmax(0, 61fr) minmax(0, 12fr); }
+body.fullscreen .a span, body.fullscreen .a .share, body.fullscreen .calls { display: none; }
+body.fullscreen .a b { font-size: 13px; }
+body.fullscreen .a em { font-size: 14px; }
+body.fullscreen .mod > h2 { font-size: 11px; }
+body.fullscreen .mod-foot { font-size: 10.5px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

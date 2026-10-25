@@ -144,7 +144,7 @@ struct DesktopConsumptionSummary: Encodable {
         let item = part?.items?.max { ($0.tokens ?? 0) < ($1.tokens ?? 0) }
         let name = item?.name.map { URL(fileURLWithPath: $0).lastPathComponent }
         let detail = part.map {
-            "上下文主项 · \($0.title) \(Fmt.compact(Double($0.tokens ?? 0))) tok" + (name.map { " · \($0)" } ?? "")
+            "上下文主项 · \($0.title) \(Fmt.compact(Double($0.tokens ?? 0))) 令牌" + (name.map { " · \($0)" } ?? "")
         } ?? "上下文拆分未提供"
         return Self(purpose: record.purpose,
                     source: "\(Fmt.agentName(record.agent)) → \(record.model ?? "模型未提供")",

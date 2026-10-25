@@ -18,9 +18,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var consumptionShortcut: Any?
     private var lastScreensaverPresentation: Date?
     private var suppressAutoUntil = Date().addingTimeInterval(30)
+    /// 本应用是常驻壁纸/屏保的观测台：窗口永远位于桌面层、从不成为前台，
+    /// 系统会按「不可见应用」启动 App Nap，把 WKWebView 的 requestAnimationFrame
+    /// 压到约 1 帧/秒——星球还在，token 光束却一帧跳完，等于看不见。
+    /// 用 userInitiated 活动声明常驻运转，禁掉 App Nap 的节流。
+    private var keepAliveActivity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        keepAliveActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated],
+            reason: "MagpieWatch 壁纸遥测动画常驻刷新"
+        )
 
         widgetController = WidgetWindowController(
             model: model,
@@ -141,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 key: ""
             )
         )
-        statusMenu.addItem(menuItem(title: "Token 消耗明细…", action: #selector(openConsumption), key: "t"))
+        statusMenu.addItem(menuItem(title: "令牌消耗明细…", action: #selector(openConsumption), key: "t"))
         statusMenu.addItem(
             menuItem(
                 title: "偏好设置…",

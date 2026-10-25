@@ -51,7 +51,7 @@ enum Fmt {
             return "—"
         }
         let value = Double(output) / (Double(decodeMilliseconds) / 1_000)
-        return "\(Int(value.rounded())) tok/s"
+        return "\(Int(value.rounded())) 字/秒"
     }
 
     /// 数值版生成速率，供 token 流向动画使用。

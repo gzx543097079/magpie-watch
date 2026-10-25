@@ -31,10 +31,10 @@ Magpie runs locally at `127.0.0.1:3425`. The app polls its usage, quota, request
 - Live today / 7-day / 30-day / all-time usage summaries from `/v1/magpie/usage`.
 - Provider/account quota windows from `/v1/magpie/quotas`.
 - Recent route and fallback activity from `/v1/magpie/usage/requests` and `/v1/magpie/trace`.
-- Desktop wallpaper presenting quotas, today's spend and cache rate, a live route stream (latency, TTFT, failures, model/folder mix, recent calls), a round-trip stage (Agent → Gateway → LLM → back, replayed once per real trace route and labelled as 4-second snapshot replay) and agent rankings.
+- Desktop wallpaper presenting quotas, today's spend and cache rate, a live route stream (latency, TTFT, failures, model/folder mix, recent calls), a round-trip stage (Agent → Gateway → LLM → back, replayed once per real trace route and labelled as second-level snapshot replay) and agent rankings.
 - Wallpaper below desktop icons with mouse passthrough.
 - Menu-bar controls and optional legacy widget/screen-saver mode.
-- Trace polling is discrete (about four seconds); the board shows only what the gateway returned, with no interpolation or invented traffic.
+- Trace and request-ledger polling is discrete (about one second); heavier usage and quota data refreshes about every four seconds. The board shows only what the gateway returned, with no interpolation or invented traffic.
 - A clear offline state when Magpie is unavailable; demo data may be used only as an explicitly labelled preview.
 - No screen recording, OCR, cloud upload, or account credentials are used.
 
