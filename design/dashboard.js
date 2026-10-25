@@ -372,191 +372,35 @@
     if (!rows.length) $('calls-rows').replaceChildren(el('div', 'empty', '等待请求账本'));
   }
 
-  /* ── 请求解剖：请求账本的聚合维度 + 最近真实耗时 + 上下文构成 ── */
-  const median = (list) => {
-    if (!list.length) return null;
-    const sorted = [...list].sort((a, b) => a - b);
-    const mid = sorted.length >> 1;
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  };
-  const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + ' 秒';
-  const timingText = (ms) => ms == null ? '未上报' : secs(ms);
+  /* ── 实时路由：内嵌 magpie web 的「路由」原页 ──
+     magpie 自带无头网页版（magpie web），官方允许与 GUI 并存——
+     同一份设置与账号，不抢网关。页面经 /magpie/ 同源转发，服务端在
+     HTML 里注入一行 skin.css：代码是 magpie 的一行不改，外观由皮肤
+     叠加成壁纸的语言。magpie web 由 MagpieWatch 负责拉起并自愈。 */
+  const rtWrap = $('rt-live'), rtFrame = $('rt-frame'), rtNote = $('routing-note');
 
-  let lastAnatomyKey = null;
-  let anatomyBlipTimer = 0;
-  let anatomyResizeTimer = 0;
-  function blipAnatomy() {
-    const mod = $('anatomy-mod');
-    mod.classList.remove('blip');
-    void mod.offsetWidth;
-    mod.classList.add('blip');
-    clearTimeout(anatomyBlipTimer);
-    anatomyBlipTimer = setTimeout(() => mod.classList.remove('blip'), 900);
+  function rtFit() {
+    if (!rtWrap.clientWidth || !rtWrap.clientHeight) return;
+    // 页面在 ~1250px 宽下排版最舒展；皮肤已藏起页头/页签，整体放大铺满模块
+    const z = Math.max(0.6, Math.min(1.75, rtWrap.clientWidth / 1250));
+    rtFrame.style.width = Math.round(rtWrap.clientWidth / z) + 'px';
+    rtFrame.style.height = Math.round(rtWrap.clientHeight / z) + 'px';
+    rtFrame.style.transform = 'scale(' + z.toFixed(4) + ')';
   }
+  new ResizeObserver(rtFit).observe(rtWrap);
 
-  function renderAnatomyModels(requests) {
-    const groups = [...(((requests && requests.by) || {}).modelAt || [])]
-      .sort((a, b) => (b.calls || 0) - (a.calls || 0));
-    const top = groups.slice(0, 5);
-    const rest = groups.slice(5);
-    const items = top;
-    if (rest.length) {
-      items.push(rest.reduce((sum, m) => ({
-        id: '__others', name: '另 ' + rest.length + ' 个', calls: (sum.calls || 0) + (m.calls || 0),
-        cost: (sum.cost || 0) + (m.cost || 0), errors: (sum.errors || 0) + (m.errors || 0)
-      }), { id: '__others', name: '另 ' + rest.length + ' 个', calls: 0, cost: 0, errors: 0 }));
+  async function rtWake() {
+    try {
+      const res = await fetch('/live-config', { cache: 'no-store' });
+      if (!res.ok) throw new Error('not ready');
+      rtFrame.src = '/magpie/?view=routing&theme=dark';
+      rtNote.textContent = 'magpie · 路由原页';
+    } catch {
+      rtNote.textContent = '正在连接 magpie web…';
+      setTimeout(rtWake, 5000);
     }
-    const maxCalls = Math.max(1, ...items.map((m) => m.calls || 0));
-    keyed($('anatomy-models'), items, (m) => m.id,
-      () => {
-        const row = el('div', 'an-model');
-        const head = el('div');
-        head.append(el('b'), el('em'));
-        const bar = el('div', 'an-call-bar');
-        bar.append(el('i'));
-        row.append(head, bar, el('span'));
-        return row;
-      },
-      (node, m) => {
-        node.classList.toggle('bad', !!m.errors);
-        node.children[0].children[0].textContent = m.name || m.id;
-        node.children[0].children[1].textContent = integer(m.calls);
-        node.children[1].firstChild.style.width = share(m.calls || 0, maxCalls) + '%';
-        node.children[2].textContent = money(m.cost) + (m.errors ? ' · 失败 ' + integer(m.errors) : '');
-        node.title = (m.name || m.id) + '\n调用 ' + integer(m.calls) +
-          '\n费用 ' + money(m.cost) + '\n失败 ' + integer(m.errors || 0);
-      });
-    if (!items.length) $('anatomy-models').replaceChildren(el('div', 'empty', '等待模型账本'));
   }
-
-  function renderAnatomyTiming(requests) {
-    const list = $('anatomy-timing');
-    const firstRow = list.firstElementChild && list.firstElementChild.classList.contains('an-time')
-      ? list.firstElementChild.getBoundingClientRect().height : 23;
-    const capacity = Math.max(6, Math.min(18, Math.floor(list.clientHeight / Math.max(1, firstRow))));
-    const rows = (((requests && requests.rows) || []).filter((r) => r.ms != null)).slice(0, capacity);
-    const maxMs = Math.max(1, ...rows.map((r) => r.ms || 0));
-    keyed(list, rows,
-      (r) => (r.route_id || r.t) + '|' + (r.served || r.model) + '|' + r.ms,
-      () => {
-        const row = el('div', 'an-time');
-        row.append(el('span', 'at'), el('span', 'am'), el('span', 'ap'));
-        const track = el('span', 'ar');
-        track.append(el('i'), el('b'), el('u'));
-        row.append(track, el('span', 'ad'));
-        return row;
-      },
-      (node, r) => {
-        const bad = !!r.status && r.status !== 200;
-        node.className = 'an-time' + (bad ? ' bad' : '');
-        node.children[0].textContent = clockOf(r.t);
-        node.children[1].textContent = r.served || r.model || '—';
-        const [total, ttft, flow] = node.querySelector('.ar').children;
-        total.style.width = share(r.ms || 0, maxMs) + '%';
-        const ttftMs = r.ttft_ms;
-        const flowMs = r.flow_ms;
-        if (ttftMs != null && ttftMs <= (r.ms || 0)) {
-          ttft.style.left = share(ttftMs, maxMs) + '%';
-          ttft.title = '首字 ' + secs(ttftMs);
-        } else {
-          ttft.style.left = '-9px';
-          ttft.title = '首字未上报';
-        }
-        if (ttftMs != null && flowMs != null && ttftMs < (r.ms || 0) && flowMs > 0) {
-          const from = ttftMs;
-          const to = Math.min(r.ms || 0, ttftMs + flowMs);
-          flow.style.left = share(from, maxMs) + '%';
-          flow.style.width = Math.max(0, share(to - from, maxMs)) + '%';
-          flow.title = '生成流 ' + secs(flowMs);
-        } else {
-          flow.style.width = '0';
-        }
-        node.children[4].textContent = secs(r.ms);
-        node.title = clockOf(r.t) + ' · ' + (r.served || r.model || '—') +
-          '\n总时长 ' + secs(r.ms) +
-          '\n首字 ' + timingText(r.ttft_ms) +
-          '\n生成流 ' + timingText(r.flow_ms) +
-          '\n传输 ' + timingText(r.sent_ms) +
-          '\n网关 ' + timingText(r.own_ms) +
-          '\nHTTP ' + (r.status || '未上报');
-      });
-    if (!rows.length) list.replaceChildren(el('div', 'empty', '等待耗时账本'));
-
-    const totalList = rows.map((r) => r.ms).filter(Number.isFinite);
-    const ttftList = rows.map((r) => r.ttft_ms).filter((v) => v != null);
-    const flowList = rows.map((r) => r.flow_ms).filter((v) => v != null);
-    const sentList = rows.map((r) => r.sent_ms).filter((v) => v != null);
-    const ownList = rows.map((r) => r.own_ms).filter((v) => v != null);
-    $('anatomy-timing-meta').textContent =
-      '中位 总 ' + secs(median(totalList)) + ' · 首字 ' + secs(median(ttftList)) +
-      ' · 生成流 ' + secs(median(flowList)) +
-      ' · 传输 ' + secs(median(sentList)) + ' ' + sentList.length + '/' + rows.length +
-      ' · 网关 ' + secs(median(ownList)) + ' ' + ownList.length + '/' + rows.length;
-    return { rows, failed: rows.filter((r) => r.status && r.status !== 200) };
-  }
-
-  function renderAnatomyTokens(requests) {
-    const groups = [...(((requests && requests.by) || {}).modelAt || [])]
-      .sort((a, b) => ((b.cache_read || 0) + (b.input || 0) + (b.output || 0)) -
-                      ((a.cache_read || 0) + (a.input || 0) + (a.output || 0)))
-      .slice(0, 6);
-    const maxTotal = Math.max(1, ...groups.map((m) => (m.cache_read || 0) + (m.input || 0) + (m.output || 0)));
-    keyed($('anatomy-tokens'), groups, (m) => m.id,
-      () => {
-        const row = el('div', 'an-token');
-        const head = el('div');
-        head.append(el('b'), el('em'));
-        const bar = el('div', 'an-token-bar');
-        ['cache', 'in', 'out'].forEach(() => bar.append(el('i')));
-        row.append(head, bar, el('span'));
-        return row;
-      },
-      (node, m) => {
-        const total = (m.cache_read || 0) + (m.input || 0) + (m.output || 0);
-        const pieces = [
-          ['cache_read', m.cache_read], ['input', m.input], ['output', m.output]
-        ];
-        node.children[0].children[0].textContent = m.id;
-        node.children[0].children[1].textContent = compact(total);
-        [...node.children[1].children].forEach((part, i) => {
-          const [label, value] = pieces[i];
-          part.style.width = share(value || 0, maxTotal) + '%';
-          part.title = label + ' ' + compact(value || 0);
-        });
-        node.children[2].textContent = '推理 ' + compact(m.reasoning || 0) + '（含输出）';
-        node.title = (m.name || m.id) + '\n缓存读 ' + compact(m.cache_read) +
-          '\n新输入 ' + compact(m.input) + '\n输出 ' + compact(m.output) +
-          '\n推理 ' + compact(m.reasoning) + '（已包含在输出内）';
-      });
-    if (!groups.length) $('anatomy-tokens').replaceChildren(el('div', 'empty', '等待令牌账本'));
-  }
-
-  function renderAnatomy(bundle) {
-    const requests = bundle.requests;
-    renderAnatomyModels(requests);
-    const timing = renderAnatomyTiming(requests);
-    renderAnatomyTokens(requests);
-
-    const rows = (requests && requests.rows) || [];
-    const newest = rows[0];
-    const key = newest ? String(newest.route_id || newest.t) : '';
-    if (key && key !== lastAnatomyKey) {
-      if (lastAnatomyKey) blipAnatomy();
-      lastAnatomyKey = key;
-    }
-
-    const running = (((bundle.trace || {}).routes) || []).filter((r) => !r.done).length;
-    const bad = timing.failed.length;
-    $('anatomy-mod').classList.toggle('alert', bad > 0);
-    $('anatomy-note').textContent = '模型分流 · 耗时 · 令牌 · ' + integer(rows.length) + ' 条账本';
-    $('anatomy-foot').textContent = rows.length
-      ? '最近 ' + integer(timing.rows.length) + ' 条 · 传输/网关字段缺失不推断'
-      : '等待请求账本';
-    $('anatomy-foot2').textContent = rows.length
-      ? '在途 ' + integer(running) + ' · 失败 ' + integer(bad) + ' / ' + integer(rows.length)
-      : '';
-    $('anatomy-foot2').classList.toggle('bad', bad > 0);
-  }
+  rtWake();
 
   /* ── 主循环 ── */
   function paint(bundle) {
@@ -565,7 +409,6 @@
     renderQuotas(quotas, history);
     renderPulse(today);
     renderCalls(requests);
-    renderAnatomy(bundle);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
     $('gw-meta').textContent = info ? '网关 v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
@@ -626,14 +469,12 @@
     body.classList.add('settling');
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => body.classList.remove('settling'), 1100);
-    if (lastGood) renderAnatomy(lastGood);
   };
 
   window.addEventListener('resize', () => {
     clearTimeout(anatomyResizeTimer);
     anatomyResizeTimer = setTimeout(() => {
-      if (lastGood) renderAnatomy(lastGood);
-    }, 80);
+      }, 80);
   });
 
   function tickClock() {
@@ -662,7 +503,6 @@
       ]);
       lastGood.trace = trace;
       if (requests) lastGood.requests = requests;
-      renderAnatomy(lastGood);
       renderCalls(lastGood.requests);
     } catch (error) {
       // 快循环失败不打扰画面：网关状态交给主循环判定。

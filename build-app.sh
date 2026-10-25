@@ -19,7 +19,7 @@ cp "$ROOT/.build/release/MagpieWatch" "$MACOS/MagpieWatch"
 cp "$ROOT/Info.plist" "$CONTENTS/Info.plist"
 mkdir -p "$RESOURCES/Wallpaper"
 cp "$ROOT/design/dashboard.html" "$ROOT/design/dashboard.css" "$ROOT/design/dashboard.js" \
-   "$ROOT/design/magpie-bird.svg" "$RESOURCES/Wallpaper/"
+   "$ROOT/design/skin.css" "$ROOT/design/magpie-bird.svg" "$RESOURCES/Wallpaper/"
 
 if [[ -f "$ICON_SOURCE" ]]; then
     cp "$ICON_SOURCE" "$RESOURCES/AppIcon.icns"

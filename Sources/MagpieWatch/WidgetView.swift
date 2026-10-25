@@ -88,10 +88,7 @@ struct WidgetView: View {
                 }
             }
 
-            RouteNetworkView(route: model.routePresentation, compact: true)
-                .frame(height: 74)
-
-            TokenFlowView(route: model.routePresentation, compact: true)
+            RouteStageView(route: model.routePresentation, compact: true)
 
             HStack {
                 compactMetric("预估费用", Fmt.currency(model.usage?.cost), tint: palette.amber)
@@ -246,13 +243,9 @@ struct WidgetView: View {
             .padding(.horizontal, 15)
             .padding(.top, 14)
 
-            RouteNetworkView(route: model.routePresentation)
-                .frame(height: 164)
-                .padding(.horizontal, 8)
-
-            TokenFlowView(route: model.routePresentation)
+            RouteStageView(route: model.routePresentation)
                 .padding(.horizontal, 15)
-                .padding(.bottom, 4)
+                .padding(.vertical, 10)
 
             HStack(spacing: 0) {
                 routeStat("请求", "\(model.routePresentation.requests)")
