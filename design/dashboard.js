@@ -381,77 +381,181 @@
     $('quota-foot2').classList.toggle('soon', !noWin && !!fastest);
   }
 
-  /* ── 节奏脉搏 ──
-     今日模块里的小节奏条并到这里放大：柱高 = 该小时调用量，出错小时柱顶一段红，
-     当前小时点亮冒火花；只画到最新有活动的小时，数据同一份 today.series。 */
-  function renderPulse(today) {
-    const series = today.series || [];
-    let end = series.length;
-    while (end > 1 && !series[end - 1].calls) end -= 1;
-    const hours = series.slice(0, end);
-    const maxCalls = Math.max(1, ...hours.map((h) => h.calls || 0));
-    const peak = hours.reduce((a, h) => ((h.calls || 0) > (a.calls || 0) ? h : a), hours[0] || {});
-    keyed($('pulse-bars'), hours, (h) => h.label,
-      () => el('i'),
-      (node, h, i) => {
-        const cur = i === hours.length - 1;
-        node.style.height = Math.max(3, share(h.calls || 0, maxCalls)) + '%';
-        node.className = cur ? 'cur' : (h.calls ? '' : 'zero');
-        if (h.errors) node.className = (cur ? 'cur ' : '') + 'err';
-        node.title = h.label + ' 时 · ' + integer(h.calls) + ' 次 · ' + money(h.cost)
-          + (h.errors ? ' · 失败 ' + integer(h.errors) : '');
-      });
-    // 轴标：每 4 小时一个刻度，其余槽位留空对齐柱位。
-    const axis = $('pulse-axis');
-    if (!axis.children.length) {
-      for (let i = 0; i < 24; i += 1) {
-        const tick = el('span');
-        if (i % 4 === 0) tick.textContent = String(i).padStart(2, '0') + ' 时';
-        axis.append(tick);
-      }
+  /* ── 上下文窗口：magpie context.js 的 ctxCard。
+     格子算法原样：窗口均分 400 格，parts 按 token 占比着色，空格是剩余窗口。
+     取在途请求；没有在途就取最近一次带 prompt 的。不编造。 */
+  const CTX_PARTS = ['system', 'tools', 'memory', 'files', 'results', 'chat'];
+  const CTX_NAMES = {
+    system: '系统指令', tools: '工具定义', memory: '记忆与项目规则',
+    files: '文件与图片', results: '工具执行返回', chat: '对话历史'
+  };
+  const CTX_SHORT = {
+    system: '系统', tools: '工具', memory: '记忆',
+    files: '文件', results: '返回', chat: '对话'
+  };
+  const CTX_CELLS = 400;
+
+  function ctxFmt(n) {
+    n = Math.max(0, Math.round(n || 0));
+    const short = (x, d) => x.toFixed(d).replace(/\.0+$/, '');
+    if (n >= 1e6) return short(n / 1e6, n >= 1e7 ? 1 : 2) + 'M';
+    if (n >= 1e3) return short(n / 1e3, n >= 1e5 ? 0 : 1) + 'K';
+    return String(n);
+  }
+
+  function ctxHealth(fill) {
+    return fill < 0.75 ? ['ok', '健康'] : fill < 0.9 ? ['warn', '在涨'] : ['bad', '将近满'];
+  }
+
+  function ctxCacheOf(route) {
+    const list = route.usage || [];
+    const u = list[list.length - 1];
+    if (!u) return null;
+    const read = u.cache_read || u.cacheRead || 0;
+    const total = (u.in || 0) + read + (u.cache_write || u.cacheWrite || 0);
+    if (!total) return null;
+    return { read, total };
+  }
+
+  function ctxCellsOf(p, windowSize) {
+    const tokens = p.tokens || 0;
+    const scale = Math.max(windowSize, tokens, 1);
+    const used = Math.min(CTX_CELLS, Math.round((tokens / scale) * CTX_CELLS));
+    const parts = CTX_PARTS
+      .map((k) => (p.parts || []).find((x) => x.kind === k))
+      .filter((x) => x && x.tokens > 0);
+    const sum = parts.reduce((s, x) => s + x.tokens, 0) || 1;
+    const want = parts.map((x) => (x.tokens / sum) * used);
+    const got = want.map((w) => Math.max(1, Math.floor(w)));
+    let left = used - got.reduce((s, n) => s + n, 0);
+    const order = want.map((w, i) => [w - Math.floor(w), i]).sort((a, b) => b[0] - a[0]);
+    for (let j = 0; left > 0 && order.length; j = (j + 1) % order.length, left -= 1) {
+      got[order[j][1]] += 1;
     }
-    const last = hours[hours.length - 1] || {};
-    $('pulse-foot').textContent = hours.length
-      ? '峰值 ' + integer(peak.calls || 0) + ' 次 · ' + peak.label + ' 时 · 现已 ' + integer(last.calls || 0) + ' 次'
-      : '等待今日序列';
-    $('pulse-foot2').textContent = '今日 ' + integer(today.calls) + ' 次'
-      + (today.errors ? ' · 失败 ' + integer(today.errors) : '');
+    for (let j = got.length - 1; left < 0 && j >= 0; j -= 1) {
+      while (left < 0 && got[j] > 1) { got[j] -= 1; left += 1; }
+    }
+    const cells = [];
+    parts.forEach((x, pi) => {
+      for (let c = 0; c < got[pi]; c += 1) cells.push(x.kind);
+    });
+    while (cells.length < CTX_CELLS) cells.push(null);
+    return cells.slice(0, CTX_CELLS);
   }
 
-  /* ── 最近调用：请求账本（usage/requests）的明细带，两行最新真实调用 ── */
-  function renderCalls(requests) {
-    const rows = ((requests && requests.rows) || []).slice(0, 2);
-    keyed($('calls-rows'), rows, (r) => r.t + '|' + (r.session || '') + '|' + (r.model || ''),
-      () => {
-        const row = el('div', 'c-row fresh');
-        ['t', 'ag', 'md', 'out', 'ms', 'cost'].forEach((c) => row.append(el('span', c)));
-        return row;
+  function latestPromptRoute(trace) {
+    const routes = ((trace && trace.routes) || []).filter((r) => {
+      const p = r.prompt;
+      return p && (p.tokens || (p.parts || []).length);
+    });
+    const live = routes.filter((r) => r.done === false);
+    const pool = live.length ? live : routes;
+    return pool[pool.length - 1] || null;
+  }
+
+  function renderContext(trace) {
+    const route = latestPromptRoute(trace);
+    const body = $('ctx-body');
+    const waffle = $('ctx-waffle');
+    const legend = $('ctx-legend');
+    const health = $('ctx-health');
+    const cacheBox = $('ctx-cache-box');
+    if (!route) {
+      body.classList.add('is-empty');
+      $('ctx-note').textContent = '等待上下文窗口';
+      $('ctx-foot').textContent = '';
+      $('ctx-foot2').textContent = '';
+      waffle.replaceChildren();
+      legend.replaceChildren();
+      return;
+    }
+    body.classList.remove('is-empty');
+    const p = route.prompt;
+    const tokens = p.tokens || 0;
+    const windowSize = p.window || 0;
+    const fill = windowSize ? tokens / windowSize : 0;
+    const live = route.done === false;
+    const state = live ? 'live' : p.counted ? 'counted' : 'est';
+    const stateWord = live ? '回答中' : p.counted ? '已计量' : '估算';
+    const model = route.served || route.model || '';
+    put('ctx-used', ctxFmt(tokens));
+    $('ctx-win').textContent = windowSize ? '/ ' + ctxFmt(windowSize) : '令牌';
+    if (windowSize) {
+      const [tone, word] = ctxHealth(fill);
+      health.hidden = false;
+      health.className = 'ctx-health ' + tone;
+      health.textContent = word;
+      $('ctx-sub').textContent = Math.round(fill * 100) + '% · 剩余 ' + ctxFmt(Math.max(0, windowSize - tokens));
+    } else {
+      health.hidden = true;
+      $('ctx-sub').textContent = '窗口大小未知';
+    }
+    const cache = ctxCacheOf(route);
+    cacheBox.classList.toggle('none', !cache);
+    if (cache) {
+      put('ctx-cache', Math.round(cache.read / cache.total * 100) + '%');
+      $('ctx-cache-sub').textContent = ctxFmt(cache.read) + ' 命中 · ' + ctxFmt(cache.total - cache.read) + ' 新';
+    } else {
+      $('ctx-cache').textContent = '—';
+      $('ctx-cache-sub').textContent = live ? '供应商应答后可读' : '供应商未给出';
+    }
+    const st = $('ctx-state');
+    st.className = 'ctx-state ' + state;
+    $('ctx-state-word').textContent = stateWord;
+    $('ctx-note').textContent = (mask(route.agentName || route.agent) || 'agent')
+      + (model ? ' · ' + model : '');
+
+    const cells = ctxCellsOf(p, windowSize);
+    if (waffle.children.length !== CTX_CELLS) {
+      waffle.replaceChildren();
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < CTX_CELLS; i += 1) frag.append(el('i'));
+      waffle.append(frag);
+    }
+    for (let i = 0; i < CTX_CELLS; i += 1) {
+      const cls = cells[i] ? 'k-' + cells[i] : 'free';
+      if (waffle.children[i].className !== cls) waffle.children[i].className = cls;
+    }
+    waffle.setAttribute('aria-label',
+      ctxFmt(tokens) + (windowSize ? ' / ' + ctxFmt(windowSize) : '') + ' 令牌');
+
+    const partOf = new Map((p.parts || []).map((x) => [x.kind, x]));
+    const legs = CTX_PARTS
+      .filter((k) => (partOf.get(k) || {}).tokens > 0)
+      .map((k) => ({ kind: k, tokens: partOf.get(k).tokens }));
+    if (windowSize && windowSize > tokens) {
+      legs.push({ kind: 'free', tokens: windowSize - tokens });
+    }
+    keyed(legend, legs, (x) => x.kind,
+      (x) => {
+        const node = el('span', 'ctx-leg');
+        node.append(el('i', x.kind === 'free' ? 'free' : 'k-' + x.kind), el('span', 'n'), el('span', 'v'));
+        return node;
       },
-      (node, r) => {
-        const [t, ag, md, out, ms, cost] = node.children;
-        t.textContent = clockOf(r.t);
-        ag.textContent = mask(r.agentName || r.agent);
-        md.textContent = r.served || r.model;
-        out.replaceChildren(el('b', null, compact(r.out)), document.createTextNode(' 出'));
-        ms.textContent = r.ms ? (r.ms / 1000).toFixed(1) + ' 秒' : '—';
-        cost.textContent = r.priced ? money(r.cost) : '未计价';
-        node.classList.toggle('bad', !!r.status && r.status !== 200);
-        if (r.status && r.status !== 200) md.title = 'HTTP ' + r.status;
+      (node, x) => {
+        node.children[0].className = x.kind === 'free' ? 'free' : 'k-' + x.kind;
+        node.children[1].textContent = x.kind === 'free' ? '剩余' : (CTX_SHORT[x.kind] || x.kind);
+        node.children[2].textContent = ctxFmt(x.tokens);
+        node.title = x.kind === 'free' ? '剩余空间' : (CTX_NAMES[x.kind] || x.kind);
       });
-    if (!rows.length) $('calls-rows').replaceChildren(el('div', 'empty', '等待请求账本'));
+
+    const turns = p.turns;
+    $('ctx-foot').textContent = (mask(route.agentName || route.agent) || '')
+      + (turns ? ' · ' + integer(turns) + ' 轮' : '');
+    $('ctx-foot2').textContent = stateWord
+      + (p.counted ? ' · 供应商计量' : ' · 按请求估算');
   }
 
-  /* ── 实时路由：内嵌 magpie web 的「路由」原页 ──
-     magpie 自带无头网页版（magpie web），官方允许与 GUI 并存——
-     同一份设置与账号，不抢网关。页面经 /magpie/ 同源转发，服务端在
-     HTML 里注入一行 skin.css：代码是 magpie 的一行不改，外观由皮肤
-     叠加成壁纸的语言。magpie web 由 MagpieWatch 负责拉起并自愈。 */
+  /* ── 实时路由：内嵌 magpie 路由舞台 ──
+     源码 plugins/routing：#rt 里只露出 .rt-stage（agent → hub → 账号行），
+     其余标题、策略说明、页脚、账本由 skin.css 藏掉。magpie 的 JS 一行不改。 */
   const rtWrap = $('rt-live'), rtFrame = $('rt-frame'), rtNote = $('routing-note');
 
   function rtFit() {
     if (!rtWrap.clientWidth || !rtWrap.clientHeight) return;
-    // 页面在 ~1250px 宽下排版最舒展；皮肤已藏起页头/页签，整体放大铺满模块
-    const z = Math.max(0.6, Math.min(1.75, rtWrap.clientWidth / 1250));
+    // magpie 舞台三列（agent 124 + hub 124 + 账号行）在 ~920×280 最接近原页截图
+    const z = Math.max(0.55, Math.min(1.85,
+      Math.min(rtWrap.clientWidth / 920, rtWrap.clientHeight / 280)));
     rtFrame.style.width = Math.round(rtWrap.clientWidth / z) + 'px';
     rtFrame.style.height = Math.round(rtWrap.clientHeight / z) + 'px';
     rtFrame.style.transform = 'scale(' + z.toFixed(4) + ')';
@@ -463,7 +567,7 @@
       const res = await fetch('/live-config', { cache: 'no-store' });
       if (!res.ok) throw new Error('not ready');
       rtFrame.src = '/magpie/?view=routing&theme=dark';
-      rtNote.textContent = 'magpie · 路由原页';
+      rtNote.textContent = 'magpie · 路由舞台';
     } catch {
       rtNote.textContent = '正在连接 magpie web…';
       setTimeout(rtWake, 5000);
@@ -473,11 +577,10 @@
 
   /* ── 主循环 ── */
   function paint(bundle) {
-    const { today, week, month, quotas, history, requests, info, trace } = bundle;
+    const { today, week, month, quotas, history, info, trace } = bundle;
     renderToday(today, week, month);
     renderQuotas(quotas, history, trace);
-    renderPulse(today);
-    renderCalls(requests);
+    renderContext(trace);
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
     $('gw-meta').textContent = info ? '网关 v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
@@ -489,7 +592,7 @@
 
   async function refresh() {
     try {
-      const [today, week, month, quotas, trace, history, requests, info] = await Promise.all([
+      const [today, week, month, quotas, trace, history, info] = await Promise.all([
         get('/v1/magpie/usage?period=today'),
         get('/v1/magpie/usage?period=7d'),
         get('/v1/magpie/usage?period=30d'),
@@ -497,13 +600,11 @@
         get('/v1/magpie/trace'),
         // 燃尽曲线数据：单独容错——拿不到只是少画一条线，不算离线。
         get('/v1/magpie/quotas/history').catch(() => null),
-        // 请求账本：单独容错——拿不到只少两行明细。
-        get('/v1/magpie/usage/requests?period=today&limit=120').catch(() => null),
         // 网关铭牌（版本/模型数）：单独容错。
         get('/').catch(() => null)
       ]);
       online = true;
-      lastGood = { today, week, month, quotas, trace, history, requests, info, at: Date.now() };
+      lastGood = { today, week, month, quotas, trace, history, info, at: Date.now() };
       paint(lastGood);
     } catch (error) {
       online = false;
@@ -552,8 +653,8 @@
   tickClock();
   setInterval(tickClock, 1000);
 
-  /* 轮询分两层：主循环 4 秒全量；快循环 1 秒只拉 trace 与请求账本，
-     最近调用与额度「回答中」因此接近实时。trace 只用于当前在途。 */
+  /* 轮询分两层：主循环 4 秒全量；快循环 1 秒只拉 trace，
+     上下文格子与额度「回答中」因此接近实时。trace 只用于当前在途。 */
   (async function loop() {
     for (;;) {
       await refresh();
@@ -566,13 +667,9 @@
     if (fastBusy || !lastGood) return;
     fastBusy = true;
     try {
-      const [trace, requests] = await Promise.all([
-        get('/v1/magpie/trace'),
-        get('/v1/magpie/usage/requests?period=today&limit=120').catch(() => null)
-      ]);
+      const trace = await get('/v1/magpie/trace');
       lastGood.trace = trace;
-      if (requests) lastGood.requests = requests;
-      renderCalls(lastGood.requests);
+      renderContext(trace);
       syncQuotaLive(trace);
     } catch (error) {
       // 快循环失败不打扰画面：网关状态交给主循环判定。

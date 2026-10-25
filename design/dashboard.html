@@ -44,23 +44,33 @@
     </section>
 
     <section class="mod c8 r2" id="routing-mod">
-      <h2><span class="tt">实时路由 <i class="code">magpie 原页 · 原版编舞</i></span><small id="routing-note">正在连接 magpie web…</small></h2>
+      <h2><span class="tt">实时路由 <i class="code">magpie 舞台</i></span><small id="routing-note">正在连接 magpie web…</small></h2>
       <div class="body rt-live" id="rt-live">
         <iframe id="rt-frame" title="magpie 路由" src="about:blank"></iframe>
       </div>
     </section>
 
-    <section class="mod c8 r3">
-      <h2><span class="tt">节奏 <i class="code">脉搏</i></span><small>24 小时 · 调用 · 失败</small></h2>
-      <div class="body pulse-body">
-        <div class="pulse-bars" id="pulse-bars"></div>
-        <div class="pulse-axis" id="pulse-axis"></div>
+    <section class="mod c8 r3" id="ctx-mod">
+      <h2><span class="tt">上下文窗口 <i class="code">magpie 格子</i></span><small id="ctx-note"></small></h2>
+      <div class="body ctx-body" id="ctx-body">
+        <div class="ctx-top">
+          <div class="ctx-stat">
+            <b id="ctx-used">—</b>
+            <span id="ctx-win"></span>
+            <span class="ctx-health" id="ctx-health" hidden></span>
+            <em id="ctx-sub"></em>
+          </div>
+          <div class="ctx-stat cache" id="ctx-cache-box">
+            <span>缓存</span>
+            <b id="ctx-cache">—</b>
+            <em id="ctx-cache-sub"></em>
+          </div>
+          <span class="ctx-state" id="ctx-state"><i></i><b id="ctx-state-word">—</b></span>
+        </div>
+        <div class="ctx-waffle" id="ctx-waffle" role="img" aria-label="上下文窗口"></div>
+        <div class="ctx-legend" id="ctx-legend"></div>
       </div>
-      <div class="calls">
-        <span class="calls-t">最近调用 <em>请求账本</em></span>
-        <div id="calls-rows"></div>
-      </div>
-      <div class="mod-foot"><span id="pulse-foot"></span><span id="pulse-foot2"></span></div>
+      <div class="mod-foot"><span id="ctx-foot"></span><span id="ctx-foot2"></span></div>
     </section>
   </main>
 

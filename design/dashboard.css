@@ -19,6 +19,14 @@
   --mono: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
   /* 机柜四角角标的颜色：常态青光，blip 时提亮，离线时转红 */
   --tick-c: rgba(111, 242, 255, 0.62);
+  /* magpie 上下文格子：暗色主题 --c6…--c1，对应 system…chat */
+  --k-system: #c4b5fd;
+  --k-tools: #7dd3fc;
+  --k-memory: #fcd34d;
+  --k-files: #6ee7b7;
+  --k-results: #f9a8d4;
+  --k-chat: #a5b4fc;
+  --k-free: rgba(242, 249, 255, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -186,8 +194,9 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 请求解剖 / 节奏+最近调用）。 */
-  grid-template-rows: minmax(0, 24fr) minmax(0, 57fr) minmax(0, 19fr);
+  /* 左栏四列整块留给账号额度；右栏：今日按内容贴顶，上下文按内容贴底，
+     中间全部给实时路由。 */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -323,7 +332,7 @@ main {
 .c8 { grid-column: span 8; }
 .c12 { grid-column: span 12; }
 
-/* 今日：一行仪表（支出巨字 + 缓存率 + 速度/首字迷你表）→ 流程一行 → 五格 → 节奏图 */
+/* 今日：一行仪表（支出巨字 + 缓存率 + 速度/首字迷你表）→ 流程一行 → 四格 */
 .today-body { display: flex; flex-direction: column; }
 .hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; }
 .hero { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -390,50 +399,149 @@ main {
 .cells span { display: block; color: var(--dim); font-size: 9px; letter-spacing: 0.05em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cells b { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.015em; color: var(--ink); text-shadow: 0 0 12px rgba(111, 242, 255, 0.25); }
 
-/* 节奏脉搏：右下模块的 24 小时柱场。今日模块里的小条带已并入这里：
-   柱高 = 该小时调用量，当前小时点亮冒火花，出错小时柱顶一段红。 */
-.pulse-body { display: flex; flex-direction: column; min-height: 0; }
-.pulse-bars { flex: 1 1 0; min-height: 0; display: flex; align-items: flex-end; gap: 3px; }
-.pulse-bars i {
-  flex: 1 1 0;
-  min-width: 3px;
-  display: block;
-  position: relative;
-  background: rgba(47, 127, 214, 0.4);
-  border-top: 1px solid rgba(111, 242, 255, 0.35);
+/* 上下文窗口：magpie context.js 的 400 格（每格窗口的 1/400），
+   颜色按 prompt.parts 的 kind，空格是还没用的窗口。 */
+#ctx-mod { align-self: stretch; }
+#ctx-mod .body { flex: none; }
+.ctx-body { display: flex; flex-direction: column; flex: none; gap: 5px; }
+.ctx-body.is-empty .ctx-top,
+.ctx-body.is-empty .ctx-waffle,
+.ctx-body.is-empty .ctx-legend { display: none; }
+.ctx-body.is-empty::before {
+  content: '等待一次带上下文窗口的请求';
+  color: var(--dim);
+  font-size: 10px;
+  padding: 6px 0;
 }
-.pulse-bars i.cur {
-  background: linear-gradient(180deg, var(--live), rgba(47, 127, 214, 0.5));
-  box-shadow: 0 0 8px rgba(111, 242, 255, 0.55);
+.ctx-top {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  min-width: 0;
 }
-/* 当前小时冒出的荧光火花：此刻有活动的小时才会「冒烟」 */
-.pulse-bars i.cur::before,
-.pulse-bars i.cur::after {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  width: 2.5px;
-  height: 2.5px;
+.ctx-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ctx-stat b {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  text-shadow: 0 0 12px rgba(111, 242, 255, 0.25);
+}
+.ctx-stat span { color: var(--dim); font-size: 10px; white-space: nowrap; }
+.ctx-stat em { font-style: normal; color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-stat.cache b {
+  font-size: 12.5px;
+  text-shadow: none;
+}
+.ctx-stat.none b { color: var(--dim2); text-shadow: none; }
+.ctx-health {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ctx-health[hidden] { display: none; }
+.ctx-health.ok { background: rgba(110, 231, 183, 0.14); color: #6ee7b7; }
+.ctx-health.warn { background: rgba(255, 188, 125, 0.16); color: var(--amber); }
+.ctx-health.bad { background: rgba(255, 122, 122, 0.16); color: var(--void); }
+.ctx-state {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 9px;
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(30, 60, 95, 0.55);
+}
+.ctx-state i {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #dffcff;
-  box-shadow: 0 0 5px rgba(111, 242, 255, 0.95);
-  animation: rise 1.7s ease-out infinite;
+  background: var(--dim2);
 }
-.pulse-bars i.cur::after { animation-delay: 0.85s; }
-.pulse-bars i.zero { background: rgba(47, 127, 214, 0.10); border-top-color: rgba(96, 158, 220, 0.18); }
-/* 出过错的小时：柱顶一段红，故障时段一眼可辨 */
-.pulse-bars i.err {
-  background: linear-gradient(180deg, rgba(255, 122, 122, 0.65) 0 3px, rgba(47, 127, 214, 0.4) 3px);
-  border-top-color: rgba(255, 122, 122, 0.8);
+.ctx-state.counted i { background: var(--live); }
+.ctx-state.live {
+  color: var(--live);
+  background: rgba(111, 242, 255, 0.12);
 }
-/* 轴标：每 4 小时一个刻度，与柱位同宽对齐 */
-.pulse-axis { flex: none; display: flex; gap: 3px; margin-top: 5px; }
-.pulse-axis span { flex: 1 1 0; min-width: 3px; color: var(--dim2); font-family: var(--mono); font-size: 8px; letter-spacing: 0.04em; white-space: nowrap; overflow: visible; }
-@keyframes rise {
-  from { transform: translate(-50%, 1px); opacity: 0.95; }
-  to { transform: translate(-50%, -15px); opacity: 0; }
+.ctx-state.live i {
+  background: var(--live);
+  animation: ctxdot 1.4s ease-in-out infinite;
 }
+.ctx-state b { font-weight: 500; }
+@keyframes ctxdot {
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctx-state.live i { animation: none; }
+}
+.ctx-waffle {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(50, minmax(0, 1fr));
+  gap: 2px;
+}
+.ctx-waffle > i {
+  display: block;
+  min-width: 0;
+  aspect-ratio: 1;
+  border-radius: 1px;
+  background: var(--k-free);
+}
+.ctx-waffle > i.k-system { background: var(--k-system); }
+.ctx-waffle > i.k-tools { background: var(--k-tools); }
+.ctx-waffle > i.k-memory { background: var(--k-memory); }
+.ctx-waffle > i.k-files { background: var(--k-files); }
+.ctx-waffle > i.k-results { background: var(--k-results); }
+.ctx-waffle > i.k-chat { background: var(--k-chat); }
+.ctx-legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+}
+.ctx-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ctx-leg i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--k-free);
+}
+.ctx-leg i.k-system { background: var(--k-system); }
+.ctx-leg i.k-tools { background: var(--k-tools); }
+.ctx-leg i.k-memory { background: var(--k-memory); }
+.ctx-leg i.k-files { background: var(--k-files); }
+.ctx-leg i.k-results { background: var(--k-results); }
+.ctx-leg i.k-chat { background: var(--k-chat); }
+.ctx-leg i.free {
+  background: var(--k-free);
+  box-shadow: inset 0 0 0 1px rgba(242, 249, 255, 0.14);
+}
+.ctx-leg .v { font-family: var(--mono); color: var(--dim); }
 
 /* 额度：左栏三分之一整列。账号之间留白，窗口之间只留一条细线，不靠边框分隔。 */
 .quota-mod { grid-row: 1 / -1; }
@@ -660,37 +768,6 @@ main {
 .q-idle b { flex: none; font-weight: 400; font-size: 10px; color: var(--muted); letter-spacing: 0.03em; }
 .q-idle span { color: var(--dim2); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 最近调用：智能体模块底部的请求账本明细带，一行一条真实调用 */
-.calls { flex: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--hair); }
-.calls-t {
-  display: flex;
-  justify-content: space-between;
-  color: var(--dim);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  margin-bottom: 3px;
-}
-.calls-t em { font-style: normal; color: var(--dim2); letter-spacing: 0.03em; }
-.c-row {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 0.7fr) minmax(0, 1fr) auto auto auto;
-  gap: 10px;
-  align-items: baseline;
-  font-family: var(--mono);
-  font-size: 9px;
-  line-height: 14px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.c-row > span { overflow: hidden; text-overflow: ellipsis; }
-.c-row .t { color: var(--dim); }
-.c-row .md { color: var(--ink); }
-.c-row b { color: var(--ink); font-weight: 500; }
-.c-row span:nth-child(n+4) { text-align: right; }
-.c-row.bad .md, .c-row.bad b { color: var(--void); }
-.c-row.fresh { animation: rowIn 0.6s ease-out; }
-@keyframes rowIn { from { background: rgba(111, 242, 255, 0.14); } to { background: transparent; } }
-
 /* 请求解剖：请求账本的三个切面——模型分流、耗时结构、上下文构成。 */
 .anatomy-body {
   min-height: 0;
@@ -891,8 +968,7 @@ body.fullscreen .q-main span { font-size: 10.5px; }
 body.fullscreen .q-bar { height: 8px; }
 body.fullscreen .q-group > h3 { font-size: 12.5px; }
 body.fullscreen .q-group > h3 em { font-size: 10.5px; }
-body.fullscreen main { grid-template-rows: minmax(0, 27fr) minmax(0, 61fr) minmax(0, 12fr); }
-body.fullscreen .calls { display: none; }
+body.fullscreen main { grid-template-rows: auto minmax(0, 1fr) auto; }
 body.fullscreen .anatomy-body { column-gap: 24px; }
 body.fullscreen .an-panel + .an-panel { padding-left: 24px; }
 body.fullscreen .an-panel h3 { font-size: 10px; }
