@@ -1,10 +1,19 @@
 # MAGPIE 观测台 · 续接文档
 
-> 壁纸最后核对：2026-10-24（下方旧模块记录保留原核对日期）
+> 壁纸最后核对：2026-10-25（下方旧模块记录保留原核对日期）
 > 项目目录：`/Users/gengzhixiang/Desktop/桌面小组件/MagpieWatch`（2026-10-22 起全部项目内容集中在此子文件夹）  
 > 当前版本：`1.0.0 (1)`
 
 本文档面向后续开发者，记录当前实现边界、关键决策、接口约定、验证方法和建议的下一步。产品目标与设计原则见 [PRODUCT.md](PRODUCT.md)，用户安装说明见 [README.md](README.md)。
+
+## 2026-10-25：实时链路换成请求解剖（当前）
+
+- 用户需求：去掉中右「实时链路 / 星系」模块，改用 Magpie 实际可取的其他数据；保留模型星球在右侧纵列的既有布局。
+- **数据能力核对**：实时请求 `/v1/magpie/usage/requests?period=today&limit=120` 确认返回 120 行账本与聚合。可用维度包括 `by.modelAt` / `by.provider` / `by.model`，逐行 `agent` / `provider` / `model` / `served`，令牌 `in` / `out` / `cache_read` / `cache_write` / `reasoning`，费用 `cost` / `priced`，耗时 `ms` / `ttft_ms` / `flow_ms` / `sent_ms` / `own_ms`，状态 `status` / `stop` / `ep`。顶层还提供 agents、providers、purposes、direct、series、decode 等聚合。
+- **新模块「请求解剖」**：三栏结构——模型/服务商分流（前 5 + 合并另 N 个，调用、费用、失败）、按可用高度最多 18 条的耗时解剖（总时长条、首字刻线、生成流覆盖段）、令牌/上下文构成（前 6 模型的缓存读、新输入、输出分段，推理注明已含在输出内）。
+- **数据边界**：主循环与 1 秒快循环均拉 120 条请求账本；`/v1/magpie/trace` 只用于当前在途计数。`sent_ms` / `own_ms` 常见为 null，中位行给出可用样本数，页脚固定「传输/网关字段缺失不推断」，不做分相求和或合成瀑布。
+- **移除内容**：删除星系回放、canvas、App Nap watchdog、route trip/node/spark、直连旁路与 3D 网关核心逻辑；保留 keyed 原位更新与新请求角标 blip。失败模型与失败请求仍用红色状态表达。
+- **文档同步**：README / PRODUCT / DESIGN / surface brief 已从「实时链路 / 星系」改为「请求解剖」，说明真实字段与缺失边界；历史 HANDOFF 章节保留旧实现记录。
 
 ## 2026-10-24：其余三模块数据升级（当前）
 

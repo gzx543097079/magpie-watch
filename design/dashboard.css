@@ -186,7 +186,7 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 实时链路 / 智能体+最近调用）。 */
+  /* 左栏四列整块留给账号额度；右栏八列三段（今日 / 请求解剖 / 节奏+最近调用）。 */
   grid-template-rows: minmax(0, 24fr) minmax(0, 57fr) minmax(0, 19fr);
   column-gap: 26px;
   row-gap: 18px;
@@ -602,26 +602,6 @@ main {
 .q-idle b { flex: none; font-weight: 400; font-size: 10px; color: var(--muted); letter-spacing: 0.03em; }
 .q-idle span { color: var(--dim2); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 会话排行：一行一会话，名字 + 费用 + 明细 + 费用占比条（复用 .models-wide 三列网格） */
-.models-wide, .agents-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; align-content: start; }
-.a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--hair); }
-.a:last-child { border-bottom: 0; }
-.a b { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.a em {
-  font-family: var(--mono);
-  font-style: normal;
-  font-size: 11.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--live);
-  text-shadow: 0 0 10px rgba(111, 242, 255, 0.45);
-}
-.a b, .a em { line-height: 15px; }
-.a span { grid-column: 1 / -1; color: var(--dim); font-size: 9px; line-height: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 调用占比：名字下一条细轨，宽度 = 该智能体调用数 / 最活跃智能体 */
-.a .share { grid-column: 1 / -1; height: 2px; background: rgba(30, 60, 95, 0.5); margin-top: 2px; }
-.a .share i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); box-shadow: 0 0 5px rgba(74, 163, 255, 0.4); }
-
 /* 最近调用：智能体模块底部的请求账本明细带，一行一条真实调用 */
 .calls { flex: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--hair); }
 .calls-t {
@@ -653,9 +633,164 @@ main {
 .c-row.fresh { animation: rowIn 0.6s ease-out; }
 @keyframes rowIn { from { background: rgba(111, 242, 255, 0.14); } to { background: transparent; } }
 
-/* 实时链路：智能体 → 网关 → 模型的快照回放舞台，右栏的主视觉；网关待机呼吸由画布绘制 */
-.route-body { position: relative; }
-.route-body canvas { width: 100%; height: 100%; display: block; }
+/* 请求解剖：请求账本的三个切面——模型分流、耗时结构、上下文构成。 */
+.anatomy-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(165px, 21fr) minmax(0, 49fr) minmax(170px, 23fr);
+  column-gap: 18px;
+}
+.an-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.an-panel + .an-panel { border-left: 1px solid var(--hair); padding-left: 18px; }
+.an-panel h3 {
+  flex: none;
+  margin: 0 0 9px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hair);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+.an-panel h3 span {
+  flex: none;
+  color: var(--dim2);
+  font-size: 8.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+.an-model-list, .an-token-list { display: flex; flex-direction: column; justify-content: space-between; min-height: 0; }
+.an-model, .an-token { min-width: 0; padding: 3px 0 6px; }
+.an-model > div:first-child, .an-token > div:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 7px; }
+.an-model b, .an-token b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 13px;
+}
+.an-model em, .an-token em {
+  flex: none;
+  color: var(--live);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+}
+.an-model span, .an-token span {
+  display: block;
+  margin-top: 3px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  line-height: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.an-model.bad b, .an-model.bad span { color: var(--void); }
+.an-call-bar, .an-token-bar { height: 3px; margin-top: 5px; background: rgba(18, 38, 60, 0.9); overflow: hidden; }
+.an-call-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--mark-soft), var(--mark)); box-shadow: 0 0 6px rgba(74, 163, 255, 0.42); }
+.an-model.bad .an-call-bar i { background: linear-gradient(90deg, #8c3a3a, var(--void)); box-shadow: 0 0 6px rgba(255, 122, 122, 0.45); }
+.an-token-bar { height: 7px; display: flex; }
+.an-token-bar i { display: block; height: 100%; }
+.an-token-bar i:nth-child(1) { background: rgba(74, 163, 255, 0.92); }
+.an-token-bar i:nth-child(2) { background: var(--live); box-shadow: 0 0 7px rgba(111, 242, 255, 0.35); }
+.an-token-bar i:nth-child(3) { background: #9fd1ff; }
+.an-token-legend {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--hair);
+  color: var(--dim);
+  font-size: 8.5px;
+  white-space: nowrap;
+}
+.an-token-legend span { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+.an-token-legend i { flex: none; width: 6px; height: 6px; }
+.t-cache { background: #4aa3ff; }
+.t-in { background: var(--live); }
+.t-out { background: #9fd1ff; }
+.an-panel-head { flex: none; display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.an-panel-head h3 { margin: 0; }
+.an-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dim);
+  font-size: 8.5px;
+  white-space: nowrap;
+}
+.an-legend i { width: 10px; height: 3px; background: var(--mark); }
+.an-legend .l-ttft { width: 1px; height: 10px; background: #f0feff; }
+.an-legend .l-flow { width: 10px; height: 7px; background: rgba(111, 242, 255, 0.35); border-top: 1px solid var(--live); }
+.an-timing-list { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.an-time {
+  display: grid;
+  grid-template-columns: 37px minmax(78px, 0.5fr) minmax(0, 1fr) 44px;
+  row-gap: 3px;
+  column-gap: 9px;
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  line-height: 10px;
+}
+.an-time > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-time .at, .an-time .ad { color: var(--dim); }
+.an-time .am { color: var(--ink); }
+.an-time .ad { text-align: right; }
+.an-time .ar { position: relative; height: 7px; background: rgba(18, 38, 60, 0.86); }
+.an-time .ar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  background: linear-gradient(90deg, rgba(47, 127, 214, 0.72), rgba(74, 163, 255, 0.45));
+}
+.an-time .ar b {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: #f4feff;
+  box-shadow: 0 0 6px rgba(240, 254, 255, 0.75);
+}
+.an-time .ar u {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  display: block;
+  text-decoration: none;
+  background: rgba(111, 242, 255, 0.30);
+  border-top: 1px solid rgba(111, 242, 255, 0.88);
+}
+.an-time.bad .am, .an-time.bad .ad { color: var(--void); }
+.an-time.bad .ar i { background: rgba(255, 122, 122, 0.46); }
+.an-timing-meta {
+  flex: none;
+  margin-top: 8px;
+  padding-top: 5px;
+  border-top: 1px solid var(--hair);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  line-height: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .mod-foot .bad { color: var(--void); }
 .mod-foot .soon { color: var(--amber); }
@@ -681,7 +816,7 @@ body.offline .wall { transition: opacity 0.4s ease; }
 body.offline .mod { --tick-c: rgba(255, 122, 122, 0.4); }
 body.offline::after { animation-play-state: paused; opacity: 0.4; }
 
-/* 屏保概览模式：全屏（屏保）时降噪——细节层退场，一眼读数放大，星系占更大。
+/* 屏保概览模式：全屏（屏保）时适度放大请求解剖，主图仍保持三栏可读。
    桌面态不受影响，仍是全量数据面板。 */
 body.fullscreen .hero b { font-size: 64px; }
 body.fullscreen .hero-row { gap: 30px; }
@@ -699,9 +834,15 @@ body.fullscreen .q-bar { height: 8px; }
 body.fullscreen .q-group > h3 { font-size: 12.5px; }
 body.fullscreen .q-group > h3 em { font-size: 10.5px; }
 body.fullscreen main { grid-template-rows: minmax(0, 27fr) minmax(0, 61fr) minmax(0, 12fr); }
-body.fullscreen .a span, body.fullscreen .a .share, body.fullscreen .calls { display: none; }
-body.fullscreen .a b { font-size: 13px; }
-body.fullscreen .a em { font-size: 14px; }
+body.fullscreen .calls { display: none; }
+body.fullscreen .anatomy-body { column-gap: 24px; }
+body.fullscreen .an-panel + .an-panel { padding-left: 24px; }
+body.fullscreen .an-panel h3 { font-size: 10px; }
+body.fullscreen .an-model b, body.fullscreen .an-token b { font-size: 11px; }
+body.fullscreen .an-model em, body.fullscreen .an-token em { font-size: 12px; }
+body.fullscreen .an-model span, body.fullscreen .an-token span,
+body.fullscreen .an-time, body.fullscreen .an-timing-meta { font-size: 9.5px; }
+body.fullscreen .an-token-bar { height: 9px; }
 body.fullscreen .mod > h2 { font-size: 11px; }
 body.fullscreen .mod-foot { font-size: 10.5px; }
 
