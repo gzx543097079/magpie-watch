@@ -551,21 +551,70 @@
      其余标题、策略说明、页脚、账本由 skin.css 藏掉。magpie 的 JS 一行不改。 */
   const rtWrap = $('rt-live'), rtFrame = $('rt-frame'), rtNote = $('routing-note');
 
+  const rtMain = document.querySelector('main');
+  const rtMod = $('routing-mod'), ctxMod = $('ctx-mod');
+  let rtContentObserver = null, rtMutationObserver = null;
+
   function rtFit() {
-    if (!rtWrap.clientWidth || !rtWrap.clientHeight) return;
-    // magpie 舞台三列（agent 124 + hub 124 + 账号行）在 ~920×280 最接近原页截图
-    const z = Math.max(0.55, Math.min(1.85,
-      Math.min(rtWrap.clientWidth / 920, rtWrap.clientHeight / 280)));
-    rtFrame.style.width = Math.round(rtWrap.clientWidth / z) + 'px';
-    rtFrame.style.height = Math.round(rtWrap.clientHeight / z) + 'px';
-    rtFrame.style.transform = 'scale(' + z.toFixed(4) + ')';
+    if (!rtWrap.clientWidth || !rtMain.clientHeight) return;
+    // 以宽度决定舞台缩放；账号行增加时，优先借用上下文面板的高度。
+    const widthScale = Math.max(0.55, Math.min(1.85, rtWrap.clientWidth / 920));
+    let contentHeight = 280;
+    try {
+      const doc = rtFrame.contentDocument;
+      const stage = doc && doc.querySelector('.rt-stage');
+      if (stage) {
+        const lists = stage.querySelectorAll('.rt-accts, .rt-srcs');
+        lists.forEach((list) => {
+          // Include the stage and outer container's vertical padding.
+          contentHeight = Math.max(contentHeight, list.scrollHeight + 56);
+        });
+      }
+    } catch { /* 页面未就绪时保留默认高度 */ }
+
+    const today = rtMain.querySelector('.c8.r1');
+    const gap = parseFloat(getComputedStyle(rtMain).rowGap) || 0;
+    const available = Math.max(0, rtMain.clientHeight - today.offsetHeight - 2 * gap);
+    const routingChrome = rtMod.offsetHeight - rtWrap.clientHeight;
+    const desiredContext = ctxMod.scrollHeight + 2; // 包含边框
+    const contextHeight = Math.min(desiredContext, Math.max(0, available - routingChrome - contentHeight * widthScale));
+    // 不能完整展示标题和主要读数时，整块收起，避免显示残缺内容。
+    const collapsed = contextHeight < 70;
+    ctxMod.classList.toggle('is-collapsed', collapsed);
+    rtMain.style.setProperty('--context-height', (collapsed ? 0 : Math.round(contextHeight)) + 'px');
+    // Once context is hidden, scale the whole stage to fit the available height.
+    const stageSpace = Math.max(1, available - routingChrome);
+    const z = collapsed ? Math.min(widthScale, stageSpace / contentHeight) : widthScale;
+    rtFrame.style.width = (rtWrap.clientWidth / z) + 'px';
+    rtFrame.style.height = (rtWrap.clientHeight / z) + 'px';
+    rtFrame.style.transform = 'scale(' + z + ')';
   }
   new ResizeObserver(rtFit).observe(rtWrap);
+  new ResizeObserver(rtFit).observe(rtMain);
+  rtFrame.addEventListener('load', () => {
+    if (rtContentObserver) rtContentObserver.disconnect();
+    if (rtMutationObserver) rtMutationObserver.disconnect();
+    try {
+      const doc = rtFrame.contentDocument;
+      if (!doc || !doc.body) return;
+      rtContentObserver = new ResizeObserver(rtFit);
+      rtMutationObserver = new MutationObserver(() => {
+        doc.querySelectorAll('.rt-accts, .rt-srcs').forEach((list) => rtContentObserver.observe(list));
+        rtFit();
+      });
+      rtMutationObserver.observe(doc.body, { childList: true, subtree: true });
+      doc.querySelectorAll('.rt-accts, .rt-srcs').forEach((list) => rtContentObserver.observe(list));
+      rtFit();
+    } catch { /* iframe 加载或重连期间稍后再试 */ }
+  });
 
+  let rtGeneration = null;
   async function rtWake() {
     try {
       const res = await fetch('/live-config', { cache: 'no-store' });
       if (!res.ok) throw new Error('not ready');
+      const config = await res.json();
+      rtGeneration = config.generation;
       rtFrame.src = '/magpie/?view=routing&theme=dark';
       rtNote.textContent = 'magpie · 路由舞台';
     } catch {
@@ -574,6 +623,15 @@
     }
   }
   rtWake();
+  // 让服务端检查 Magpie 是否升级；重启后的 iframe 需要重新载入。
+  setInterval(async () => {
+    try {
+      const res = await fetch('/live-config', { cache: 'no-store' });
+      if (!res.ok) throw new Error('not ready');
+      const config = await res.json();
+      if (rtGeneration !== config.generation) rtWake();
+    } catch { rtNote.textContent = '正在连接 magpie web…'; }
+  }, 30000);
 
   /* ── 主循环 ── */
   function paint(bundle) {
@@ -581,6 +639,7 @@
     renderToday(today, week, month);
     renderQuotas(quotas, history, trace);
     renderContext(trace);
+    rtFit();
     // 顶栏：网关铭牌（版本 + 模型数）+ 状态灯 + 时钟。
     $('gw-meta').textContent = info ? '网关 v' + (info.version || '?') + ' · ' + (info.models || '?') + ' 模型' : '';
     $('gw-label').textContent = online ? '网关在线' : '网关离线';
@@ -670,6 +729,7 @@
       const trace = await get('/v1/magpie/trace');
       lastGood.trace = trace;
       renderContext(trace);
+      rtFit();
       syncQuotaLive(trace);
     } catch (error) {
       // 快循环失败不打扰画面：网关状态交给主循环判定。

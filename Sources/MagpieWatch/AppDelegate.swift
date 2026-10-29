@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         idleTimer?.invalidate()
+        MagpieWeb.stopOwned()
         if let consumptionShortcut { NSEvent.removeMonitor(consumptionShortcut) }
     }
 

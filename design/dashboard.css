@@ -196,7 +196,7 @@ main {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   /* 左栏四列整块留给账号额度；右栏：今日按内容贴顶，上下文按内容贴底，
      中间全部给实时路由。 */
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, var(--context-height, auto));
   column-gap: 26px;
   row-gap: 18px;
 }
@@ -402,6 +402,7 @@ main {
 /* 上下文窗口：magpie context.js 的 400 格（每格窗口的 1/400），
    颜色按 prompt.parts 的 kind，空格是还没用的窗口。 */
 #ctx-mod { align-self: stretch; }
+#ctx-mod.is-collapsed { visibility: hidden; padding-top: 0; padding-bottom: 0; border-width: 0; }
 #ctx-mod .body { flex: none; }
 .ctx-body { display: flex; flex-direction: column; flex: none; gap: 5px; }
 .ctx-body.is-empty .ctx-top,
@@ -968,7 +969,7 @@ body.fullscreen .q-main span { font-size: 10.5px; }
 body.fullscreen .q-bar { height: 8px; }
 body.fullscreen .q-group > h3 { font-size: 12.5px; }
 body.fullscreen .q-group > h3 em { font-size: 10.5px; }
-body.fullscreen main { grid-template-rows: auto minmax(0, 1fr) auto; }
+body.fullscreen main { grid-template-rows: auto minmax(0, 1fr) minmax(0, var(--context-height, auto)); }
 body.fullscreen .anatomy-body { column-gap: 24px; }
 body.fullscreen .an-panel + .an-panel { padding-left: 24px; }
 body.fullscreen .an-panel h3 { font-size: 10px; }

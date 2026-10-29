@@ -180,7 +180,7 @@ final class LocalOrigin {
         Task.detached { [weak self] in
             guard let self else { return }
             if let href = await MagpieWeb.ensure() {
-                let body = Data("{\"href\":\"\(href)\"}".utf8)
+                let body = (try? JSONSerialization.data(withJSONObject: ["href": href, "generation": MagpieWeb.generation])) ?? Data()
                 self.respond(connection, status: 200, body: body,
                              contentType: "application/json; charset=utf-8")
             } else {

@@ -15,6 +15,40 @@ enum MagpieWeb {
 
     private static var ensured = false
     private static var pending = false
+    private static let pendingLock = NSLock()
+    private static var ownedProcess: Process?
+    private static var launchedBinary: String?
+    private(set) static var generation = ""
+
+    private static func beginEnsure() -> Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        guard !pending else { return false }
+        pending = true
+        return true
+    }
+
+    private static func endEnsure() {
+        pendingLock.lock()
+        pending = false
+        pendingLock.unlock()
+    }
+
+    /// 文件被自动更新替换后，旧进程仍映射旧可执行文件，必须重新启动。
+    static func binaryFingerprint(path: String = "/Applications/magpie.app/Contents/MacOS/magpie") -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let inode = attrs[.systemFileNumber], let device = attrs[.systemNumber],
+              let size = attrs[.size], let date = attrs[.modificationDate] as? Date else { return nil }
+        return "\(device):\(inode):\(size):\(date.timeIntervalSince1970)"
+    }
+
+    /// 只结束本进程启动的子进程，不碰用户自行启动的 magpie web。
+    static func stopOwned() {
+        if let process = ownedProcess, process.isRunning { process.terminate() }
+        ownedProcess = nil
+        launchedBinary = nil
+        ensured = false
+    }
 
     /// 密钥：16 字节随机数的十六进制（magpie 要求 32 位 hex）。
     static func key() -> String {
@@ -72,7 +106,7 @@ enum MagpieWeb {
     @discardableResult
     static func spawn(port: UInt16) async -> Bool {
         let binary = "/Applications/magpie.app/Contents/MacOS/magpie"
-        guard FileManager.default.isExecutableFile(atPath: binary) else { return false }
+        guard FileManager.default.isExecutableFile(atPath: binary), let fingerprint = binaryFingerprint(path: binary) else { return false }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = ["web", "--no-open", "--addr", "127.0.0.1:\(port)"]
@@ -82,6 +116,9 @@ enum MagpieWeb {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do { try process.run() } catch { return false }
+        ownedProcess = process
+        launchedBinary = fingerprint
+        generation = UUID().uuidString
         // 最多等 6 秒开始监听，再给 3 秒出 trace
         for _ in 0..<(6 * 10) {
             if listening(port: port) { break }
@@ -94,31 +131,29 @@ enum MagpieWeb {
             }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
+        stopOwned()
         return false
     }
 
     /// 幂等地确保有一份带我们密钥的 magpie web 可用；返回带密钥的页面地址。
     /// 已有别的实例在听但密钥对不上时，换下一个端口拉起自己的。
     static func ensure() async -> String? {
-        if ensured, let p = preferredPort(), await alive(port: p) {
+        guard beginEnsure() else { return nil }
+        defer { endEnsure() }
+        if ownedProcess != nil && (!ownedProcess!.isRunning || binaryFingerprint() != launchedBinary) {
+            stopOwned()
+        }
+        if ensured, ownedProcess?.isRunning == true, let p = preferredPort(), await alive(port: p) {
             return pageURL(port: p)
         }
-        // 正在拉起的路上：让页面稍后再问，别并发拉起两份
-        guard !pending else { return nil }
-        pending = true
-        defer { pending = false }
+        // 验活失败时结束自己的失效进程；其他进程的端口一律不碰。
+        stopOwned()
         var tried = Set<UInt16>()
-        if let p = preferredPort() { tried.insert(p) }
         // 先试记下的端口，再扫其余端口：有实例但密钥不对就换端口
         for p in ([preferredPort()].compactMap { $0 } + ports) {
             guard !tried.contains(p) else { continue }
             tried.insert(p)
             if listening(port: p) {
-                if await alive(port: p) {
-                    setPreferredPort(p)
-                    ensured = true
-                    return pageURL(port: p)
-                }
                 continue   // 被别的实例占了：不碰它
             }
             if await spawn(port: p) {
