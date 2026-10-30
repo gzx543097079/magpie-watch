@@ -132,26 +132,6 @@ header {
   margin-bottom: 12px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  white-space: nowrap;
-}
-
-.brand img { width: 20px; height: 20px; filter: drop-shadow(0 0 7px rgba(111, 242, 255, 0.5)); }
-
-.brand em {
-  font-style: normal;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  margin-left: 4px;
-}
-
 .meta {
   display: flex;
   gap: 18px;

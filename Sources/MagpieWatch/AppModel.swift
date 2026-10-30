@@ -61,6 +61,10 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(wallpaperRightInset, forKey: Keys.wallpaperRightInset) }
     }
 
+    @Published var marketBarEnabled: Bool {
+        didSet { defaults.set(marketBarEnabled, forKey: Keys.marketBarEnabled) }
+    }
+
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -84,6 +88,7 @@ final class AppModel: ObservableObject {
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
         let savedWallpaper = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool
         let savedRightInset = defaults.object(forKey: Keys.wallpaperRightInset) as? Int
+        let savedMarketBar = defaults.object(forKey: Keys.marketBarEnabled) as? Bool
 
         widgetExpanded = savedExpanded ?? true
         isWidgetVisible = savedVisible ?? false
@@ -94,6 +99,7 @@ final class AppModel: ObservableObject {
         maskEmails = savedMaskEmails ?? true
         isWallpaperEnabled = savedWallpaper ?? true
         wallpaperRightInset = savedRightInset ?? 120
+        marketBarEnabled = savedMarketBar ?? true
     }
 
     deinit {
@@ -431,4 +437,5 @@ private enum Keys {
     static let maskEmails = "magpie.privacy.maskEmails"
     static let wallpaperEnabled = "magpie.wallpaper.enabled"
     static let wallpaperRightInset = "magpie.wallpaper.rightInset"
+    static let marketBarEnabled = "magpie.marketBar.enabled"
 }

@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesWindow: NSWindow?
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
+    private var marketTimer: Timer?
+    private var marketRequestInFlight = false
+    private var marketQuotes: [MarketQuote] = []
     private var isStatusMenuTracking = false
     private var cancellables = Set<AnyCancellable>()
     private var idleTimer: Timer?
@@ -49,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wallpaperController = WallpaperWindowController(model: model)
 
         configureStatusItem()
+        startMarketTicker()
         // NSStatusItem menu equivalents do not run when its menu is closed.
         consumptionShortcut = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
@@ -73,24 +77,135 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         idleTimer?.invalidate()
+        marketTimer?.invalidate()
         MagpieWeb.stopOwned()
         if let consumptionShortcut { NSEvent.removeMonitor(consumptionShortcut) }
     }
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.isVisible = true
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "waveform.path.ecg",
-                accessibilityDescription: "Magpie Watch"
-            )
-            button.image?.isTemplate = true
+            button.title = "A股"
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+            button.image = nil
+            button.toolTip = "Magpie Watch · A股行情"
         }
 
         statusMenu = NSMenu()
         statusMenu.delegate = self
         statusItem.menu = statusMenu
         rebuildStatusMenu()
+    }
+
+    private struct MarketQuote: Codable {
+        let label: String
+        let price: Double
+        let change: Double
+    }
+
+    private let marketCacheKey = "magpie.marketBar.lastQuotes"
+
+    private var isChinaWeekday: Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let weekday = calendar.component(.weekday, from: Date())
+        return weekday >= 2 && weekday <= 6
+    }
+
+    private var isChinaMarketOpen: Bool {
+        guard isChinaWeekday else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let hour = calendar.component(.hour, from: Date())
+        let minute = calendar.component(.minute, from: Date())
+        let minutes = hour * 60 + minute
+        return (minutes >= 570 && minutes < 690) || (minutes >= 780 && minutes < 900)
+    }
+
+    private func startMarketTicker() {
+        marketTimer?.invalidate()
+        if let data = UserDefaults.standard.data(forKey: marketCacheKey),
+           let cached = try? JSONDecoder().decode([MarketQuote].self, from: data) {
+            marketQuotes = cached
+            updateMarketButton()
+        }
+        marketTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshMarketBar() }
+        }
+        refreshMarketBar()
+    }
+
+    private func refreshMarketBar() {
+        guard model.marketBarEnabled, isChinaWeekday else {
+            marketQuotes = []
+            updateMarketButton()
+            return
+        }
+        // A股休市时保留最后报价，但完全不发起接口请求。
+        guard isChinaMarketOpen else {
+            updateMarketButton()
+            return
+        }
+        guard !marketRequestInFlight else { return }
+        marketRequestInFlight = true
+        guard let url = URL(string: "https://qt.gtimg.cn/q=sh000001,sz399006,sh000688") else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            let quotes: [MarketQuote] = {
+                guard (response as? HTTPURLResponse)?.statusCode == 200, let data else { return [] }
+                let labels = ["上证", "创业板", "科创50"]
+                return String(decoding: data, as: UTF8.self)
+                    .split(separator: ";")
+                    .compactMap { line -> MarketQuote? in
+                        let fields = line.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
+                        guard fields.count > 32, let price = Double(fields[3]), let change = Double(fields[32]) else { return nil }
+                        let index = fields[2] == "399006" ? 1 : fields[2] == "000688" ? 2 : 0
+                        return MarketQuote(label: labels[index], price: price, change: change)
+                    }
+                    .sorted { labels.firstIndex(of: $0.label)! < labels.firstIndex(of: $1.label)! }
+            }()
+            Task { @MainActor in
+                guard let self else { return }
+                self.marketRequestInFlight = false
+                if !quotes.isEmpty {
+                    self.marketQuotes = quotes
+                    if let data = try? JSONEncoder().encode(quotes) {
+                        UserDefaults.standard.set(data, forKey: self.marketCacheKey)
+                    }
+                }
+                self.updateMarketButton()
+            }
+        }.resume()
+    }
+
+    private func updateMarketButton() {
+        guard let button = statusItem?.button else { return }
+        guard model.marketBarEnabled, isChinaWeekday else {
+            button.title = ""
+            button.attributedTitle = NSAttributedString(string: "")
+            button.image = NSImage(systemSymbolName: "waveform.path.ecg", accessibilityDescription: "Magpie Watch")
+            button.image?.isTemplate = true
+            return
+        }
+        button.image = nil
+        if !isChinaMarketOpen && marketQuotes.isEmpty {
+            button.attributedTitle = NSAttributedString(string: "A股休市", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor])
+            button.title = "A股休市"
+            return
+        }
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        let text = NSMutableAttributedString()
+        for (index, quote) in marketQuotes.enumerated() {
+            if index > 0 { text.append(NSAttributedString(string: "  ")) }
+            let tone: NSColor = quote.change > 0 ? .systemRed : quote.change < 0 ? .systemGreen : .systemOrange
+            let segment = String(format: "%@ %.2f %@%.2f%%", quote.label, quote.price, quote.change > 0 ? "+" : "", quote.change)
+            text.append(NSAttributedString(string: segment, attributes: [.font: font, .foregroundColor: tone]))
+        }
+        button.attributedTitle = text.length > 0 ? text : NSAttributedString(string: "A股行情连接中", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
     }
 
     private func rebuildStatusMenu() {
@@ -220,6 +335,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.wallpaperController.hide()
                 }
                 self.rebuildStatusMenu()
+            }
+            .store(in: &cancellables)
+
+        model.$marketBarEnabled
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshMarketBar()
+                self?.rebuildStatusMenu()
             }
             .store(in: &cancellables)
     }

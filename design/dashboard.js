@@ -5,6 +5,7 @@
 
   const WHY = { log: '读自日志', clock: '估算', low: '低置信' };
   const POLL_MS = 4000;
+  const MARKET_POLL_MS = 2000;
 
   const $ = (id) => document.getElementById(id);
   const compact = (v) => v == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 }).format(v);
@@ -111,6 +112,7 @@
     if (!response.ok) throw new Error(path + ' → ' + response.status);
     return response.json();
   }
+
 
   /* ── 今日 ── */
   function renderToday(today, week, month, daily) {

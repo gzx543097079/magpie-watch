@@ -88,6 +88,13 @@ struct PreferencesView: View {
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
                     }
+
+                    section("菜单栏行情") {
+                        Toggle("显示 A 股指数行情", isOn: $model.marketBarEnabled)
+                        Text("在菜单栏状态项显示上证、创业板和科创 50；周一至周五显示，仅在 9:30–11:30、13:00–15:00 刷新。")
+                            .font(.custom(WatchTheme.bodyFont, size: 10))
+                            .foregroundStyle(palette.mist)
+                    }
                 }
                 .padding(22)
             }

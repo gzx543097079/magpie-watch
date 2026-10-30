@@ -159,6 +159,8 @@ final class LocalOrigin {
 
         if path == "/live-config" {
             serveLiveConfig(connection)
+        } else if path == "/market/a-share" {
+            serveAShare(connection, headOnly: method == "HEAD")
         } else if path == "/magpie" || path.hasPrefix("/magpie/") {
             // magpie web 的页面与资产：原样转发，HTML 注入皮肤
             proxyMagpie(target: target, method: method, body: body, injectSkin: true, connection: connection)
@@ -188,6 +190,40 @@ final class LocalOrigin {
                              contentType: "application/json; charset=utf-8")
             }
         }
+    }
+
+    /// A股指数行情：由本地服务代理公开的 Tencent 快照，页面无需跨域。
+    /// 2 秒轮询由 dashboard.js 控制；上游暂时不可用时只影响行情条。
+    private func serveAShare(_ connection: NWConnection, headOnly: Bool) {
+        guard let url = URL(string: "https://qt.gtimg.cn/q=sh000001,sz399006,sh000688") else {
+            return respond(connection, status: 400, body: Data(), contentType: "application/json; charset=utf-8")
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self else { return }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 502
+            let payload: Data
+            if status == 200, let data {
+                // Tencent 的响应是 GBK；这里只取 ASCII 分隔字段，避免在服务端引入编码转换。
+                let text = String(decoding: data, as: UTF8.self)
+                let diff = text.split(separator: ";").compactMap { line -> [String: Any]? in
+                    let fields = line.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
+                    guard fields.count > 32,
+                          let price = Double(fields[3]), let change = Double(fields[32]) else { return nil }
+                    let code = fields[2]
+                    return ["f12": code, "f2": price, "f3": change]
+                }
+                payload = (try? JSONSerialization.data(withJSONObject: ["data": ["diff": diff]])) ?? Data()
+            } else {
+                payload = data ?? Data()
+            }
+            self.respond(connection, status: status,
+                         body: headOnly ? Data() : payload,
+                         contentType: "application/json; charset=utf-8")
+        }.resume()
     }
 
     /// magpie web 反向代理：附鉴权 Cookie（密钥只在服务端这一侧），
