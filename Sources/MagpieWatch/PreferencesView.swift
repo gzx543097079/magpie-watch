@@ -16,7 +16,7 @@ struct PreferencesView: View {
                         .font(.custom(WatchTheme.displayCNFont, size: 20).weight(.semibold))
                         .tracking(0.5)
                         .foregroundStyle(palette.ice)
-                    Text("桌面数据壁纸与小组件 · 仅限本机")
+                    Text("桌面数据壁纸与屏保 · 仅限本机")
                         .font(.custom(WatchTheme.displayCNFont, size: 8.5).weight(.medium))
                         .tracking(1.2)
                         .foregroundStyle(palette.mist)
@@ -57,12 +57,6 @@ struct PreferencesView: View {
                             .foregroundStyle(palette.mist)
                     }
 
-                    section("小组件") {
-                        Toggle("显示桌面小组件", isOn: $model.isWidgetVisible)
-                        Toggle("始终置顶", isOn: $model.isPinned)
-                        Toggle("鼠标穿透", isOn: $model.clickThrough)
-                    }
-
                     section("动态屏保") {
                         Toggle("空闲后自动进入屏保", isOn: $model.autoScreensaver)
                         HStack {
@@ -84,14 +78,16 @@ struct PreferencesView: View {
 
                     section("隐私") {
                         Toggle("默认隐藏邮箱地址", isOn: $model.maskEmails)
-                        Text("小组件只读取本机 Magpie API，不上传数据，也不截屏。")
+                        Text("只读取本机 Magpie API，不上传数据，也不截屏。")
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
                     }
 
                     section("菜单栏行情") {
-                        Toggle("显示 A 股指数行情", isOn: $model.marketBarEnabled)
-                        Text("在菜单栏状态项显示上证、创业板和科创 50；周一至周五显示，仅在 9:30–11:30、13:00–15:00 刷新。")
+                        Toggle("显示指数与黄金行情", isOn: $model.marketBarEnabled)
+                        marketPicker("白天 · A股", group: .aShare)
+                        marketPicker("夜盘 · 美股 / A50 / 黄金", group: .night)
+                        Text("白天 9:00–17:15 显示 A股一组，17:15 起到次日 9:00 显示夜盘一组，黄金两组都附带；取消勾选的品种不显示、也不请求，壁纸全屏顶栏同步。各品种只在自己开市时刷新（美股按美东时间 9:30–16:00 换算，夏令时自动），周末不显示。")
                             .font(.custom(WatchTheme.bodyFont, size: 10))
                             .foregroundStyle(palette.mist)
                     }
@@ -113,6 +109,29 @@ struct PreferencesView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// 一组品种的勾选；菜单栏和壁纸全屏顶栏同时生效。
+    private func marketPicker(_ title: String, group: MarketFeed.Group) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.custom(WatchTheme.bodyFont, size: 10))
+                .foregroundStyle(palette.mist)
+            HStack(spacing: 14) {
+                ForEach(MarketFeed.options.filter { $0.group == group }, id: \.code) { option in
+                    Toggle(option.label, isOn: Binding(
+                        get: { !model.hiddenMarkets.contains(option.code) },
+                        set: { shown in
+                            if shown { model.hiddenMarkets.remove(option.code) }
+                            else { model.hiddenMarkets.insert(option.code) }
+                        }
+                    ))
+                    .toggleStyle(.checkbox)
+                }
+            }
+        }
+        .disabled(!model.marketBarEnabled)
+        .opacity(model.marketBarEnabled ? 1 : 0.45)
     }
 
     private var statusPill: some View {

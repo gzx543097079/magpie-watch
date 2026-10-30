@@ -132,6 +132,63 @@ header {
   margin-bottom: 12px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+}
+
+.brand img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 7px rgba(111, 242, 255, 0.5));
+}
+
+.brand em {
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.screen-market {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: 22px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+body.fullscreen .screen-market { display: flex; }
+.screen-market-state { color: var(--dim2); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; }
+.screen-market-list { display: contents; }
+.screen-market-list > span {
+  display: inline-grid;
+  grid-template-columns: auto auto auto;
+  gap: 5px;
+  align-items: baseline;
+  padding-left: 10px;
+  border-left: 1px solid var(--hair);
+}
+.screen-market b { font-weight: 500; color: var(--muted); }
+.screen-market strong, .screen-market i { font-family: var(--mono); font-style: normal; }
+.screen-market strong { color: var(--ink); font-weight: 600; }
+.screen-market i { color: var(--dim); }
+.screen-market .up strong, .screen-market .up i { color: #ff6b6b; }
+.screen-market .down strong, .screen-market .down i { color: #62e6a4; }
+.screen-market .flat i { color: var(--amber); }
+.screen-market .closed { opacity: 0.55; }
+.screen-market.empty { display: none !important; }
+
 .meta {
   display: flex;
   gap: 18px;

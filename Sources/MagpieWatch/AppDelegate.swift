@@ -5,7 +5,6 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
-    private var widgetController: WidgetWindowController!
     private var screensaverController: ScreensaverWindowController!
     private var wallpaperController: WallpaperWindowController!
     private lazy var consumptionController = ConsumptionWindowController(model: model)
@@ -14,7 +13,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: NSMenu!
     private var marketTimer: Timer?
     private var marketRequestInFlight = false
-    private var marketQuotes: [MarketQuote] = []
     private var isStatusMenuTracking = false
     private var cancellables = Set<AnyCancellable>()
     private var idleTimer: Timer?
@@ -34,18 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reason: "MagpieWatch 壁纸遥测动画常驻刷新"
         )
 
-        widgetController = WidgetWindowController(
-            model: model,
-            onScreensaver: { [weak self] in
-                self?.showScreensaver()
-            },
-            onOpenMagpie: {
-                NSWorkspace.shared.openApplication(
-                    at: URL(fileURLWithPath: "/Applications/magpie.app"),
-                    configuration: NSWorkspace.OpenConfiguration()
-                )
-            }
-        )
         screensaverController = ScreensaverWindowController { [weak self] in
             self?.dismissScreensaver()
         }
@@ -63,10 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindModel()
         model.start()
 
-        if model.isWidgetVisible {
-            widgetController.show()
-            widgetController.ensureOnScreen()
-        }
         if model.isWallpaperEnabled {
             wallpaperController.show()
         }
@@ -86,10 +68,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.isVisible = true
         if let button = statusItem.button {
-            button.title = "A股"
+            button.title = "行情"
             button.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
             button.image = nil
-            button.toolTip = "Magpie Watch · A股行情"
+            button.toolTip = "Magpie Watch · 行情"
         }
 
         statusMenu = NSMenu()
@@ -98,114 +80,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildStatusMenu()
     }
 
-    private struct MarketQuote: Codable {
-        let label: String
-        let price: Double
-        let change: Double
-    }
-
-    private let marketCacheKey = "magpie.marketBar.lastQuotes"
-
-    private var isChinaWeekday: Bool {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let weekday = calendar.component(.weekday, from: Date())
-        return weekday >= 2 && weekday <= 6
-    }
-
-    private var isChinaMarketOpen: Bool {
-        guard isChinaWeekday else { return false }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let hour = calendar.component(.hour, from: Date())
-        let minute = calendar.component(.minute, from: Date())
-        let minutes = hour * 60 + minute
-        return (minutes >= 570 && minutes < 690) || (minutes >= 780 && minutes < 900)
-    }
-
     private func startMarketTicker() {
         marketTimer?.invalidate()
-        if let data = UserDefaults.standard.data(forKey: marketCacheKey),
-           let cached = try? JSONDecoder().decode([MarketQuote].self, from: data) {
-            marketQuotes = cached
-            updateMarketButton()
-        }
         marketTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshMarketBar() }
         }
         refreshMarketBar()
     }
 
+    /// 时段与拉取都在 MarketFeed：白天 A股、夜里美股 + A50，黄金全天附带；休市品种不发请求。
     private func refreshMarketBar() {
-        guard model.marketBarEnabled, isChinaWeekday else {
-            marketQuotes = []
-            updateMarketButton()
-            return
-        }
-        // A股休市时保留最后报价，但完全不发起接口请求。
-        guard isChinaMarketOpen else {
-            updateMarketButton()
+        guard model.marketBarEnabled else {
+            updateMarketButton(nil)
             return
         }
         guard !marketRequestInFlight else { return }
         marketRequestInFlight = true
-        guard let url = URL(string: "https://qt.gtimg.cn/q=sh000001,sz399006,sh000688") else { return }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 4
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-            let quotes: [MarketQuote] = {
-                guard (response as? HTTPURLResponse)?.statusCode == 200, let data else { return [] }
-                let labels = ["上证", "创业板", "科创50"]
-                return String(decoding: data, as: UTF8.self)
-                    .split(separator: ";")
-                    .compactMap { line -> MarketQuote? in
-                        let fields = line.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
-                        guard fields.count > 32, let price = Double(fields[3]), let change = Double(fields[32]) else { return nil }
-                        let index = fields[2] == "399006" ? 1 : fields[2] == "000688" ? 2 : 0
-                        return MarketQuote(label: labels[index], price: price, change: change)
-                    }
-                    .sorted { labels.firstIndex(of: $0.label)! < labels.firstIndex(of: $1.label)! }
-            }()
-            Task { @MainActor in
-                guard let self else { return }
-                self.marketRequestInFlight = false
-                if !quotes.isEmpty {
-                    self.marketQuotes = quotes
-                    if let data = try? JSONEncoder().encode(quotes) {
-                        UserDefaults.standard.set(data, forKey: self.marketCacheKey)
-                    }
-                }
-                self.updateMarketButton()
-            }
-        }.resume()
+        Task { @MainActor in
+            let snapshot = await MarketFeed.shared.snapshot()
+            self.marketRequestInFlight = false
+            self.updateMarketButton(self.model.marketBarEnabled ? snapshot : nil)
+        }
     }
 
-    private func updateMarketButton() {
+    private func updateMarketButton(_ snapshot: MarketFeed.Snapshot?) {
         guard let button = statusItem?.button else { return }
-        guard model.marketBarEnabled, isChinaWeekday else {
+        guard let snapshot, snapshot.group != .off else {
             button.title = ""
             button.attributedTitle = NSAttributedString(string: "")
             button.image = NSImage(systemSymbolName: "waveform.path.ecg", accessibilityDescription: "Magpie Watch")
             button.image?.isTemplate = true
+            button.toolTip = "Magpie Watch"
             return
         }
         button.image = nil
-        if !isChinaMarketOpen && marketQuotes.isEmpty {
-            button.attributedTitle = NSAttributedString(string: "A股休市", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor])
-            button.title = "A股休市"
-            return
-        }
+        button.toolTip = "Magpie Watch · " + snapshot.stateText
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
         let text = NSMutableAttributedString()
-        for (index, quote) in marketQuotes.enumerated() {
+        for (index, quote) in snapshot.quotes.enumerated() {
             if index > 0 { text.append(NSAttributedString(string: "  ")) }
             let tone: NSColor = quote.change > 0 ? .systemRed : quote.change < 0 ? .systemGreen : .systemOrange
-            let segment = String(format: "%@ %.2f %@%.2f%%", quote.label, quote.price, quote.change > 0 ? "+" : "", quote.change)
-            text.append(NSAttributedString(string: segment, attributes: [.font: font, .foregroundColor: tone]))
+            let price = String(format: quote.price >= 10000 ? "%.1f" : "%.2f", quote.price)
+            let segment = String(format: "%@ %@ %@%.2f%%", quote.label, price, quote.change > 0 ? "+" : "", quote.change)
+            // 休市品种压暗：一眼分清哪几个在跳
+            text.append(NSAttributedString(string: segment, attributes: [
+                .font: font,
+                .foregroundColor: quote.live ? tone : tone.withAlphaComponent(0.55)
+            ]))
         }
-        button.attributedTitle = text.length > 0 ? text : NSAttributedString(string: "A股行情连接中", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
+        button.attributedTitle = text.length > 0 ? text : NSAttributedString(
+            string: snapshot.group.rawValue + "行情连接中",
+            attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
     }
 
     private func rebuildStatusMenu() {
@@ -232,13 +157,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusMenu.addItem(
             menuItem(
-                title: model.isWidgetVisible ? "隐藏桌面小组件" : "显示桌面小组件",
-                action: #selector(toggleWidget),
-                key: "w"
-            )
-        )
-        statusMenu.addItem(
-            menuItem(
                 title: "进入动态屏保",
                 action: #selector(showScreensaver),
                 key: "s"
@@ -259,13 +177,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         )
         statusMenu.addItem(.separator())
-        statusMenu.addItem(
-            menuItem(
-                title: "重置小组件位置",
-                action: #selector(resetWidgetPosition),
-                key: ""
-            )
-        )
         statusMenu.addItem(menuItem(title: "令牌消耗明细…", action: #selector(openConsumption), key: "t"))
         statusMenu.addItem(
             menuItem(
@@ -298,16 +209,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func bindModel() {
-        model.$isWidgetVisible
-            .combineLatest(model.$isPinned, model.$clickThrough, model.$widgetExpanded)
-            .dropFirst()
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.widgetController.syncSettings()
-                self.rebuildStatusMenu()
-            }
-            .store(in: &cancellables)
-
         model.$refreshGeneration
             .dropFirst()
             .sink { [weak self] _ in
@@ -345,6 +246,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.rebuildStatusMenu()
             }
             .store(in: &cancellables)
+
+        // 勾选变化在 didSet 写入 defaults 之后才生效，所以推迟到下一轮再刷新
+        model.$hiddenMarkets
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshMarketBar() }
+            .store(in: &cancellables)
     }
 
     private func startIdleMonitoring() {
@@ -360,12 +268,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyLaunchArguments() {
         let arguments = Set(ProcessInfo.processInfo.arguments.dropFirst())
-        if arguments.contains("--compact") {
-            model.widgetExpanded = false
-        } else if arguments.contains("--expanded") {
-            model.widgetExpanded = true
-        }
-
         if arguments.contains("--screensaver") {
             DispatchQueue.main.async { [weak self] in
                 self?.showScreensaver()
@@ -420,10 +322,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .min() ?? 0
     }
 
-    @objc private func toggleWidget() {
-        widgetController.toggle()
-    }
-
     @objc private func showScreensaver() {
         guard !screensaverController.isVisible else { return }
         lastScreensaverPresentation = Date()
@@ -444,11 +342,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshData() {
         Task { await model.refresh() }
-    }
-
-    @objc private func resetWidgetPosition() {
-        widgetController.resetPosition()
-        widgetController.show()
     }
 
     @objc private func showPreferences() {

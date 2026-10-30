@@ -24,22 +24,6 @@ final class AppModel: ObservableObject {
     private var dailyUsageFetchedAt: Date?
     var isConsumptionVisible = false
 
-    @Published var widgetExpanded: Bool {
-        didSet { defaults.set(widgetExpanded, forKey: Keys.widgetExpanded) }
-    }
-
-    @Published var isWidgetVisible: Bool {
-        didSet { defaults.set(isWidgetVisible, forKey: Keys.widgetVisible) }
-    }
-
-    @Published var isPinned: Bool {
-        didSet { defaults.set(isPinned, forKey: Keys.pinned) }
-    }
-
-    @Published var clickThrough: Bool {
-        didSet { defaults.set(clickThrough, forKey: Keys.clickThrough) }
-    }
-
     @Published var autoScreensaver: Bool {
         didSet { defaults.set(autoScreensaver, forKey: Keys.autoScreensaver) }
     }
@@ -65,6 +49,11 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(marketBarEnabled, forKey: Keys.marketBarEnabled) }
     }
 
+    /// 行情里关掉的品种代码（MarketFeed 直接读同一个 defaults 键）。
+    @Published var hiddenMarkets: Set<String> {
+        didSet { defaults.set(Array(hiddenMarkets).sorted(), forKey: MarketFeed.hiddenKey) }
+    }
+
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -79,10 +68,6 @@ final class AppModel: ObservableObject {
         self.api = api
         self.defaults = defaults
 
-        let savedExpanded = defaults.object(forKey: Keys.widgetExpanded) as? Bool
-        let savedVisible = defaults.object(forKey: Keys.widgetVisible) as? Bool
-        let savedPinned = defaults.object(forKey: Keys.pinned) as? Bool
-        let savedClickThrough = defaults.object(forKey: Keys.clickThrough) as? Bool
         let savedAutoScreensaver = defaults.object(forKey: Keys.autoScreensaver) as? Bool
         let savedIdleMinutes = defaults.object(forKey: Keys.idleMinutes) as? Int
         let savedMaskEmails = defaults.object(forKey: Keys.maskEmails) as? Bool
@@ -90,16 +75,13 @@ final class AppModel: ObservableObject {
         let savedRightInset = defaults.object(forKey: Keys.wallpaperRightInset) as? Int
         let savedMarketBar = defaults.object(forKey: Keys.marketBarEnabled) as? Bool
 
-        widgetExpanded = savedExpanded ?? true
-        isWidgetVisible = savedVisible ?? false
-        isPinned = savedPinned ?? true
-        clickThrough = savedClickThrough ?? false
         autoScreensaver = savedAutoScreensaver ?? false
         idleMinutes = savedIdleMinutes ?? 5
         maskEmails = savedMaskEmails ?? true
         isWallpaperEnabled = savedWallpaper ?? true
         wallpaperRightInset = savedRightInset ?? 120
         marketBarEnabled = savedMarketBar ?? true
+        hiddenMarkets = Set(defaults.stringArray(forKey: MarketFeed.hiddenKey) ?? [])
     }
 
     deinit {
@@ -122,17 +104,33 @@ final class AppModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        async let serviceTask = try? api.service()
+        // Magpie 更新/重启可能让并行请求跨越两个进程：先后各取一次服务身份，
+        // 身份变化时丢弃这一批额度与用量，避免把旧额度写进新进程的状态。
+        let beforeService = try? await api.service()
         async let usageTask = try? api.usage()
         async let quotasTask = try? api.quotas()
         async let traceTask = try? api.trace()
 
-        let (newService, newUsage, newQuotas, newTrace) = await (
-            serviceTask,
+        let (newUsage, newQuotas, newTrace) = await (
             usageTask,
             quotasTask,
             traceTask
         )
+        let afterService = try? await api.service()
+
+        if let beforeService, let afterService,
+           Self.gatewayIdentity(beforeService) != Self.gatewayIdentity(afterService) {
+            service = afterService
+            traceIsFresh = false
+            usageIsFresh = false
+            quotasIsFresh = false
+            isOnline = true
+            lastUpdated = Date()
+            refreshGeneration &+= 1
+            return
+        }
+
+        let newService = afterService ?? beforeService
 
         if let newService {
             service = newService
@@ -170,6 +168,10 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private static func gatewayIdentity(_ service: ServiceInfo) -> String {
+        "\(service.pid.map(String.init) ?? "?")|\(service.version ?? "?")"
+    }
+
     func refreshConsumption() async {
         guard !isLoadingRequests else { return }
         isLoadingRequests = true
@@ -185,10 +187,6 @@ final class AppModel: ObservableObject {
 
     var consumptionRecords: [ConsumptionRecord] {
         ConsumptionRecord.merge(trace: trace, ledger: requests)
-    }
-
-    func toggleWidget() {
-        isWidgetVisible.toggle()
     }
 
     var latestRoute: TraceRoute? {
@@ -428,10 +426,6 @@ final class AppModel: ObservableObject {
 }
 
 private enum Keys {
-    static let widgetExpanded = "magpie.widget.expanded"
-    static let widgetVisible = "magpie.widget.visible"
-    static let pinned = "magpie.widget.pinned"
-    static let clickThrough = "magpie.widget.clickThrough"
     static let autoScreensaver = "magpie.screensaver.auto"
     static let idleMinutes = "magpie.screensaver.idleMinutes"
     static let maskEmails = "magpie.privacy.maskEmails"

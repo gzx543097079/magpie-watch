@@ -218,7 +218,7 @@ private struct CardBackground: ViewModifier {
 }
 
 extension View {
-    /// 统一的小组件卡片底色：轻微渐变、发丝描边和顶部高光。
+    /// 统一的观测台卡片底色：轻微渐变、发丝描边和顶部高光。
     func watchCard(
         cornerRadius: CGFloat = 17,
         tint: Color? = nil,

@@ -34,6 +34,8 @@
   let anatomyResizeTimer = 0;
   let online = true;
   let lastGood = null;
+  let fullscreenMarket = false;
+  let fullscreenMarketBusy = false;
 
   const mask = (value) => {
     if (!value) return '';
@@ -112,6 +114,33 @@
     if (!response.ok) throw new Error(path + ' → ' + response.status);
     return response.json();
   }
+
+  /* 顶栏行情（全屏时显示）：白天 A股，夜里纳指 / 金龙 / A50 / 费半，黄金全天附带。
+     时段与上游拉取由 Swift 的 MarketFeed 决定，这里只画结果；休市品种压暗。 */
+  const screenMarket = $('screen-market');
+  function paintScreenMarket(data) {
+    const quotes = (data && data.quotes) || [];
+    $('screen-market-state').textContent = data && data.state ? data.state : '';
+    screenMarket.classList.toggle('empty', !quotes.length);
+    keyed($('screen-market-list'), quotes, (q) => q.code,
+      () => { const node = el('span'); node.append(el('b'), el('strong'), el('i')); return node; },
+      (node, q) => {
+        const up = q.change > 0, down = q.change < 0;
+        node.querySelector('b').textContent = q.label;
+        node.querySelector('strong').textContent = q.price.toFixed(q.price >= 10000 ? 1 : 2);
+        node.querySelector('i').textContent = (up ? '+' : '') + q.change.toFixed(2) + '%';
+        node.classList.toggle('up', up);
+        node.classList.toggle('down', down);
+        node.classList.toggle('flat', !up && !down);
+        node.classList.toggle('closed', !q.live);
+      });
+  }
+  function refreshScreenMarket() {
+    if (!fullscreenMarket || fullscreenMarketBusy) return;
+    fullscreenMarketBusy = true;
+    get('/market/now').then(paintScreenMarket).catch(() => {}).finally(() => { fullscreenMarketBusy = false; });
+  }
+  setInterval(refreshScreenMarket, 2000);
 
 
   /* ── 今日 ── */
@@ -692,6 +721,8 @@
     document.documentElement.style.setProperty('--dock-bottom', (fullscreen ? 0 : bottom) + 'px');
     // 进出全屏时给整块画面一次展开：先压暗再抬起，配合窗口淡入，不是硬切。
     const body = document.body;
+    fullscreenMarket = fullscreen;
+    refreshScreenMarket();
     if (body.classList.contains('fullscreen') === fullscreen) return;
     body.classList.toggle('fullscreen', fullscreen);
     body.classList.remove('settling');
