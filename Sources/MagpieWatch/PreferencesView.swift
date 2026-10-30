@@ -83,6 +83,13 @@ struct PreferencesView: View {
                             .foregroundStyle(palette.mist)
                     }
 
+                    section("账号额度") {
+                        quotaPicker
+                        Text("关掉的账号不在壁纸额度区、屏保与菜单里显示；Magpie 的路由不受影响。新账号默认显示。")
+                            .font(.custom(WatchTheme.bodyFont, size: 10))
+                            .foregroundStyle(palette.mist)
+                    }
+
                     section("菜单栏行情") {
                         Toggle("显示指数与黄金行情", isOn: $model.marketBarEnabled)
                         marketPicker("白天 · A股", group: .aShare)
@@ -109,6 +116,39 @@ struct PreferencesView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// 每个账号一行开关；同一 provider|user 的多条（如不同套餐）合成一行。
+    @ViewBuilder
+    private var quotaPicker: some View {
+        let accounts = Dictionary(grouping: model.allQuotas, by: \.watchKey)
+            .compactMap { $0.value.first }
+            .sorted { ($0.name ?? "", $0.user ?? "") < ($1.name ?? "", $1.user ?? "") }
+        if accounts.isEmpty {
+            Text("等待 Magpie 返回账号…")
+                .foregroundStyle(palette.mist)
+        } else {
+            ForEach(accounts, id: \.watchKey) { quota in
+                Toggle(isOn: Binding(
+                    get: { !model.hiddenQuotas.contains(quota.watchKey) },
+                    set: { shown in
+                        if shown { model.hiddenQuotas.remove(quota.watchKey) }
+                        else { model.hiddenQuotas.insert(quota.watchKey) }
+                    }
+                )) {
+                    HStack(spacing: 6) {
+                        Text(quota.name ?? quota.provider ?? "未知")
+                        Text(Fmt.maskAccount(quota.user, masked: model.maskEmails))
+                            .foregroundStyle(palette.mist)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                    }
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+            }
+        }
     }
 
     /// 一组品种的勾选；菜单栏和壁纸全屏顶栏同时生效。

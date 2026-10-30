@@ -36,8 +36,11 @@ struct MagpieAPI {
         )
     }
 
+    /// `kept=1`：只答 magpie 上次读到的额度，不去问厂商、不等读取——
+    /// 官方给高频轮询留的口子。不带它时每次都可能触发一次厂商读取与令牌刷新，
+    /// 和 magpie 自己的刷新撞车，Claude Code 的登录就会断断续续。
     func quotas() async throws -> QuotasResponse {
-        try await get(path: "/v1/magpie/quotas", as: QuotasResponse.self)
+        try await get(path: "/v1/magpie/quotas", query: [URLQueryItem(name: "kept", value: "1")], as: QuotasResponse.self)
     }
 
     func trace() async throws -> TraceResponse {

@@ -1018,18 +1018,9 @@ body.fullscreen .an-token-bar { height: 9px; }
 body.fullscreen .mod > h2 { font-size: 11px; }
 body.fullscreen .mod-foot { font-size: 10.5px; }
 
-/* 实时路由：内嵌 magpie web 的「路由」原页。JS 按模块尺寸整体放大，
-   皮肤由服务端注入的 skin.css 叠加；magpie 的代码与编舞一行不改。 */
+/* 实时路由：magpie 路由舞台的壁纸版（routing-stage.js / routing-stage.css），
+   数据只读网关 /v1/magpie/trace，不另起 magpie 进程。 */
 .rt-live { position: relative; min-height: 0; overflow: hidden; }
-.rt-live iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  border: 0;
-  transform-origin: 0 0;
-  background: transparent;
-  color-scheme: dark;
-}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

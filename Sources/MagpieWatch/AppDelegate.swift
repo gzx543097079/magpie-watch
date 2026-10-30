@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         wallpaperController = WallpaperWindowController(model: model)
 
+        reapLegacyMagpieWeb()
         configureStatusItem()
         startMarketTicker()
         // NSStatusItem menu equivalents do not run when its menu is closed.
@@ -60,8 +61,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         idleTimer?.invalidate()
         marketTimer?.invalidate()
-        MagpieWeb.stopOwned()
         if let consumptionShortcut { NSEvent.removeMonitor(consumptionShortcut) }
+    }
+
+    /// 旧版本为实时路由拉起过 `magpie web`（端口 3431–3434 + --no-open 是它的签名）。
+    /// 现在只读网关 trace，留着的那份只会多一方轮换 OAuth 令牌：启动时收掉。用户自己的 3430 不碰。
+    private func reapLegacyMagpieWeb() {
+        for port in 3431...3434 {
+            let pkill = Process()
+            pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            pkill.arguments = ["-f", "magpie web --no-open --addr 127.0.0.1:\(port)"]
+            try? pkill.run()
+        }
+        UserDefaults.standard.removeObject(forKey: "magpie.web.key")
+        UserDefaults.standard.removeObject(forKey: "magpie.web.port")
     }
 
     private func configureStatusItem() {

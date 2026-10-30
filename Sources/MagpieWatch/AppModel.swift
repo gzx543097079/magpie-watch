@@ -4,7 +4,9 @@ import Foundation
 final class AppModel: ObservableObject {
     @Published private(set) var service: ServiceInfo?
     @Published private(set) var usage: UsageResponse?
+    /// 已按设置去掉关闭监控的账号；设置页的账号列表用 allQuotas。
     @Published private(set) var quotas: QuotasResponse?
+    @Published private(set) var allQuotas: [Quota] = []
     @Published private(set) var trace: TraceResponse?
     @Published private(set) var isOnline = false
     @Published private(set) var isRefreshing = false
@@ -54,6 +56,14 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(Array(hiddenMarkets).sorted(), forKey: MarketFeed.hiddenKey) }
     }
 
+    /// 关掉额度监控的账号（Quota.watchKey）。
+    @Published var hiddenQuotas: Set<String> {
+        didSet {
+            defaults.set(Array(hiddenQuotas).sorted(), forKey: QuotaWatch.hiddenKey)
+            applyQuotaFilter()
+        }
+    }
+
     @Published var isScreensaverActive = false
 
     private let api: MagpieAPI
@@ -82,6 +92,7 @@ final class AppModel: ObservableObject {
         wallpaperRightInset = savedRightInset ?? 120
         marketBarEnabled = savedMarketBar ?? true
         hiddenMarkets = Set(defaults.stringArray(forKey: MarketFeed.hiddenKey) ?? [])
+        hiddenQuotas = Set(defaults.stringArray(forKey: QuotaWatch.hiddenKey) ?? [])
     }
 
     deinit {
@@ -139,7 +150,8 @@ final class AppModel: ObservableObject {
             usage = newUsage
         }
         if let newQuotas {
-            quotas = newQuotas
+            allQuotas = newQuotas.data ?? []
+            applyQuotaFilter()
         }
         if let newTrace {
             trace = newTrace
@@ -166,6 +178,10 @@ final class AppModel: ObservableObject {
                 dailyUsageFetchedAt = Date()
             }
         }
+    }
+
+    private func applyQuotaFilter() {
+        quotas = QuotasResponse(data: allQuotas.filter { !hiddenQuotas.contains($0.watchKey) })
     }
 
     private static func gatewayIdentity(_ service: ServiceInfo) -> String {

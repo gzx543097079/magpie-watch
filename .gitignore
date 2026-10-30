@@ -41,3 +41,5 @@ screenshots-preview/
 screenshots/routing/
 pr-description.md
 .claude/
+!design/routing-stage.js
+!design/routing-stage.css

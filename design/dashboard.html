@@ -5,6 +5,7 @@
 <meta name="color-scheme" content="dark">
 <title>MAGPIE 观测台</title>
 <link rel="stylesheet" href="dashboard.css">
+<link rel="stylesheet" href="routing-stage.css">
 </head>
 <body>
 <div class="wall">
@@ -48,10 +49,8 @@
     </section>
 
     <section class="mod c8 r2" id="routing-mod">
-      <h2><span class="tt">实时路由 <i class="code">magpie 舞台</i></span><small id="routing-note">正在连接 magpie web…</small></h2>
-      <div class="body rt-live" id="rt-live">
-        <iframe id="rt-frame" title="magpie 路由" src="about:blank"></iframe>
-      </div>
+      <h2><span class="tt">实时路由 <i class="code">magpie 舞台</i></span><small id="routing-note">网关 trace · 只读</small></h2>
+      <div class="body rt-live" id="rt-live" role="img" aria-label="magpie 实时路由"></div>
     </section>
 
     <section class="mod c8 r3" id="ctx-mod">
@@ -82,6 +81,7 @@
     <span id="source-note">数据仅取自 127.0.0.1:3425 · 邮箱已遮蔽</span>
     <span>缓存读不计入计价 · 推理包含在输出内</span>
   </footer></div>
+<script src="routing-stage.js"></script>
 <script src="dashboard.js"></script>
 </body>
 </html>

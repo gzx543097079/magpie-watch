@@ -109,10 +109,26 @@ struct QuotasResponse: Decodable {
     let data: [Quota]?
 }
 
+/// 设置里关掉监控的额度账号：壁纸（经 LocalOrigin 过滤）与应用内各视图都不显示。
+enum QuotaWatch {
+    static let hiddenKey = "magpie.quota.hidden"
+
+    static func key(provider: String?, user: String?) -> String {
+        "\(provider ?? "")|\(user ?? "")"
+    }
+
+    static var hidden: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: hiddenKey) ?? [])
+    }
+}
+
 struct Quota: Decodable, Identifiable {
     var id: String {
         [provider, name, user, plan].compactMap { $0 }.joined(separator: "|")
     }
+
+    /// 设置里开关额度监控用的账号键：不含套餐，升降级后开关照旧。
+    var watchKey: String { QuotaWatch.key(provider: provider, user: user) }
 
     let provider: String?
     let name: String?

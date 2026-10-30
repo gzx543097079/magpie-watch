@@ -1,0 +1,121 @@
+/* ════════════════════════════════════════════════════════════════════
+   实时路由舞台的样式：magpie plugins/routing/routing.css 里 .rt-stage
+   那一段原样搬来，配色换成壁纸的「深空海军 + 青光」。
+   全部收在 .rt-live 里，不外溢到壁纸其他模块。
+   ═══════════════════════════════════════════════════════════════════ */
+
+.rt-live {
+  --card: rgba(9, 24, 44, 0.55);
+  --card-2: rgba(6, 16, 30, 0.62);
+  --line: rgba(96, 158, 220, 0.22);
+  --fg: #f2f9ff;
+  --fg-2: #b9cde3;
+  --muted: #7e95ad;
+  --accent: #6ff2ff;
+  --red: #ff7a7a;
+  --code: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
+  font-family: "Avenir Next", "PingFang SC", -apple-system, sans-serif;
+  color: var(--fg);
+}
+
+/* 舞台铺满机柜；按宽度整体缩放（dashboard.js 的 rtFit） */
+.rt-live .rt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+/* ── 以下取自 routing.css（.rt-stage 一段） ── */
+.rt-stage { position: relative; display: grid; grid-template-columns: 124px 124px minmax(0, 1fr); column-gap: 56px; align-items: center; padding: 22px 2px; }
+.rt-wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-wires path { fill: none; stroke: var(--line); stroke-width: 1.5; transition: opacity .3s; }
+.rt-wires path.live { stroke: var(--agent, var(--muted)); stroke-dasharray: 3 5; animation: rtflow .7s linear infinite; }
+.rt-wires path.lit { stroke: var(--agent, var(--muted)); }
+.rt-wires path.rest { stroke-dasharray: 2 6; opacity: .45; }
+@keyframes rtflow { to { stroke-dashoffset: -8; } }
+.rt-sky { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-sky .pkt { fill: var(--agent, var(--fg)); filter: drop-shadow(0 0 4px var(--agent, #6ff2ff)); }
+.rt-sky .pkt.back { fill: var(--card); stroke: var(--agent, var(--fg)); stroke-width: 2.25; }
+.rt-sky .pkt.back.err { fill: var(--agent, var(--card)); stroke: var(--red); }
+.rt-sky path.via { fill: none; stroke: none; }
+.rt-sky .pkt.held { animation: rtheld 1.2s ease-in-out infinite; }
+@keyframes rtheld { 50% { opacity: .45; } }
+.rt-flier { color: var(--fg); }
+.rt-flier .body, .rt-flier .tail, .rt-flier .wing path:first-child, .rt-flier .wing.far { fill: currentColor; }
+.rt-flier .wing.far { opacity: .45; }
+.rt-flier .belly { fill: var(--card); }
+.rt-flier .wing .bar { fill: none; stroke: var(--card); stroke-width: 1.3; stroke-linecap: round; }
+.rt-flier .wing { transform-box: fill-box; transform-origin: 50% 100%; animation: rtflap .42s cubic-bezier(.45, 0, .3, 1) infinite; }
+.rt-flier .wing.far { animation-delay: -.03s; }
+@keyframes rtflap { 0%, 100% { transform: scaleY(1); } 55% { transform: scaleY(-.62) skewX(-8deg); } }
+.rt-flier .rt-lift { animation: rtcome .3s ease-out; transition: transform .45s cubic-bezier(.3, 0, .2, 1), opacity .45s; }
+.rt-flier.away .rt-lift { transform: translate(14px, -16px) scale(.8); opacity: 0; }
+@keyframes rtcome { from { transform: translate(-6px, -10px) scale(.85); opacity: 0; } }
+
+.rt-srcs { position: relative; z-index: 1; min-width: 0; display: grid; gap: 10px; }
+.rt-srcs.many .rt-node { padding: 8px 8px 7px; }
+.rt-src b::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--agent); vertical-align: middle; }
+.rt-node { position: relative; z-index: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; text-align: center; }
+.rt-node .rt-bird { width: 26px; height: 26px; margin-bottom: 3px; }
+.rt-node b { font-size: 13px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-node small { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-hub { border-color: var(--fg); box-shadow: 0 0 0 4px var(--card-2); }
+.rt-hub i { font-style: normal; font-size: 10.5px; font-weight: 560; margin-top: 5px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #02141c; }
+.rt-hub i[hidden] { display: none; }
+.rt-hub.tick, .rt-src.tick { animation: rttick .4s ease-out; }
+@keyframes rttick { 40% { transform: scale(1.04); } }
+/* agent 图标：magpie 的图标库在它自己的后端里，这里用 agent 色的首字母徽章 */
+.rt-node .rt-ic { display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 3px; border-radius: 8px; background: color-mix(in srgb, var(--agent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--agent) 55%, transparent); color: var(--agent); font: 700 13px/1 var(--code); }
+.rt-srcs.many .rt-node .rt-ic { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+
+.rt-accts { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; min-width: 0; }
+.rt-accts li { position: relative; display: grid; grid-template-columns: 10px minmax(0, 1fr) fit-content(60%); align-items: center; column-gap: 10px; row-gap: 6px; padding: 9px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; transition: opacity .3s, border-color .3s, transform .5s cubic-bezier(.2, .8, .2, 1); }
+.rt-accts li.idle { display: block; color: var(--muted); border-style: dashed; text-align: center; }
+.rt-accts b { font-weight: 560; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-accts b > span { font-weight: 450; color: var(--muted); }
+.rt-accts b > span.who { color: var(--fg); font-weight: 560; }
+.rt-accts b .fb { margin-left: 6px; font-size: 10.5px; font-weight: 560; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.rt-accts b code.mdl { margin-left: 7px; font: 450 11px/1.5 var(--code); color: var(--fg-2); background: var(--card-2); border-radius: 5px; padding: 0 5px; }
+.rt-accts em { font-style: normal; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; font-family: var(--code); }
+.rt-accts li > em { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rt-accts .bar { grid-column: 2 / 4; height: 3px; border-radius: 2px; background: var(--card-2); overflow: hidden; }
+.rt-accts .bar i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--muted); transition: width .4s; }
+.rt-accts li.nobar .bar { display: none; }
+.rt-accts .dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; }
+/* 选中行用壁纸的青光（原页是前景白） */
+.rt-accts li.on { border-color: var(--accent); }
+.rt-accts li.on em { color: var(--fg); }
+.rt-accts li.on .bar i { background: var(--accent); }
+.rt-accts li.on .dot { background: var(--accent); border-color: var(--accent); }
+.rt-accts li.now .dot { animation: rtlive 1.8s infinite; }
+@keyframes rtlive { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+.rt-accts li.low em { color: var(--fg-2); }
+.rt-accts li.rest { border-style: dashed; }
+.rt-accts li.rest > :not(.tag) { opacity: .5; }
+.rt-accts li.rest em { color: var(--red); opacity: .85; }
+.rt-accts li.left { border-style: dotted; }
+.rt-accts li.left > :not(.tag) { opacity: .45; }
+.rt-accts li.hit { animation: rthit .45s; }
+.rt-accts li.new { animation: rtin .4s ease-out; }
+@keyframes rthit { 20% { translate: -5px; } 40% { translate: 4px; } 60% { translate: -2px; } 80% { translate: 1px; } }
+@keyframes rtin { from { opacity: 0; transform: translateY(4px); } }
+.rt-accts .tag { position: absolute; right: 10px; top: -10px; padding: 1px 7px; border-radius: 6px; background: var(--red); color: #fff; font: 600 10.5px/1.5 var(--code); opacity: 0; transform: translateY(4px) scale(.9); transition: opacity .25s, transform .25s; pointer-events: none; }
+.rt-accts li.tagged .tag { opacity: 1; transform: none; }
+
+/* 窄时（原页 .max560）：agent 与 magpie 并排，账号挂在下面 */
+.rt.max560 .rt-stage { grid-template-columns: 1fr 1fr; column-gap: 28px; row-gap: 26px; padding: 16px 0; }
+.rt.max560 .rt-accts { grid-column: 1 / -1; padding-left: 22px; }
+.rt.max560 .rt-accts li { grid-template-columns: 10px minmax(0, 1fr); }
+.rt.max560 .rt-accts em { grid-column: 2; white-space: normal; }
+.rt.max560 .rt-accts .bar { grid-column: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-accts li.now .dot, .rt-wires path.live, .rt-sky .pkt.held, .rt-accts li.new, .rt-accts li.hit, .rt-hub.tick, .rt-src.tick { animation: none; }
+  .rt-accts li { transition: none; }
+}

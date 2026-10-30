@@ -577,31 +577,22 @@
       + (p.counted ? ' · 供应商计量' : ' · 按请求估算');
   }
 
-  /* ── 实时路由：内嵌 magpie 路由舞台 ──
-     源码 plugins/routing：#rt 里只露出 .rt-stage（agent → hub → 账号行），
-     其余标题、策略说明、页脚、账本由 skin.css 藏掉。magpie 的 JS 一行不改。 */
-  const rtWrap = $('rt-live'), rtFrame = $('rt-frame'), rtNote = $('routing-note');
-
+  /* ── 实时路由：magpie 路由舞台的壁纸版（routing-stage.js） ──
+     不再内嵌 magpie 原页：那要靠 `magpie web` 作后端，多一个 magpie 进程就多一方
+     轮换同一份 OAuth 令牌，Claude Code 的登录会被挤掉。舞台只读网关的 trace，
+     且按 after=seq 增量取：每秒只拿新变化，不再整份 200KB 地拉。 */
+  const rtWrap = $('rt-live');
   const rtMain = document.querySelector('main');
   const rtMod = $('routing-mod'), ctxMod = $('ctx-mod');
-  let rtContentObserver = null, rtMutationObserver = null;
+  const stage = window.MagpieStage(rtWrap, { mask: (s) => mask(s), onResize: () => rtFit() });
+  const rtBox = rtWrap.firstElementChild;
 
   function rtFit() {
     if (!rtWrap.clientWidth || !rtMain.clientHeight) return;
     // 以宽度决定舞台缩放；账号行增加时，优先借用上下文面板的高度。
     const widthScale = Math.max(0.55, Math.min(1.85, rtWrap.clientWidth / 920));
-    let contentHeight = 280;
-    try {
-      const doc = rtFrame.contentDocument;
-      const stage = doc && doc.querySelector('.rt-stage');
-      if (stage) {
-        const lists = stage.querySelectorAll('.rt-accts, .rt-srcs');
-        lists.forEach((list) => {
-          // Include the stage and outer container's vertical padding.
-          contentHeight = Math.max(contentHeight, list.scrollHeight + 56);
-        });
-      }
-    } catch { /* 页面未就绪时保留默认高度 */ }
+    rtBox.classList.toggle('max560', rtWrap.clientWidth / widthScale < 560);
+    const contentHeight = Math.max(280, stage.stage.offsetHeight + 12);
 
     const today = rtMain.querySelector('.c8.r1');
     const gap = parseFloat(getComputedStyle(rtMain).rowGap) || 0;
@@ -613,56 +604,23 @@
     const collapsed = contextHeight < 70;
     ctxMod.classList.toggle('is-collapsed', collapsed);
     rtMain.style.setProperty('--context-height', (collapsed ? 0 : Math.round(contextHeight)) + 'px');
-    // Once context is hidden, scale the whole stage to fit the available height.
+    // 上下文收起后，整块舞台按剩余高度缩放。
     const stageSpace = Math.max(1, available - routingChrome);
     const z = collapsed ? Math.min(widthScale, stageSpace / contentHeight) : widthScale;
-    rtFrame.style.width = (rtWrap.clientWidth / z) + 'px';
-    rtFrame.style.height = (rtWrap.clientHeight / z) + 'px';
-    rtFrame.style.transform = 'scale(' + z + ')';
+    const w = (rtWrap.clientWidth / z) + 'px', h = (rtWrap.clientHeight / z) + 'px', t = 'scale(' + z + ')';
+    if (rtBox.style.width !== w) rtBox.style.width = w;
+    if (rtBox.style.height !== h) rtBox.style.height = h;
+    if (rtBox.style.transform !== t) rtBox.style.transform = t;
   }
   new ResizeObserver(rtFit).observe(rtWrap);
   new ResizeObserver(rtFit).observe(rtMain);
-  rtFrame.addEventListener('load', () => {
-    if (rtContentObserver) rtContentObserver.disconnect();
-    if (rtMutationObserver) rtMutationObserver.disconnect();
-    try {
-      const doc = rtFrame.contentDocument;
-      if (!doc || !doc.body) return;
-      rtContentObserver = new ResizeObserver(rtFit);
-      rtMutationObserver = new MutationObserver(() => {
-        doc.querySelectorAll('.rt-accts, .rt-srcs').forEach((list) => rtContentObserver.observe(list));
-        rtFit();
-      });
-      rtMutationObserver.observe(doc.body, { childList: true, subtree: true });
-      doc.querySelectorAll('.rt-accts, .rt-srcs').forEach((list) => rtContentObserver.observe(list));
-      rtFit();
-    } catch { /* iframe 加载或重连期间稍后再试 */ }
-  });
 
-  let rtGeneration = null;
-  async function rtWake() {
-    try {
-      const res = await fetch('/live-config', { cache: 'no-store' });
-      if (!res.ok) throw new Error('not ready');
-      const config = await res.json();
-      rtGeneration = config.generation;
-      rtFrame.src = '/magpie/?view=routing&theme=dark';
-      rtNote.textContent = 'magpie · 路由舞台';
-    } catch {
-      rtNote.textContent = '正在连接 magpie web…';
-      setTimeout(rtWake, 5000);
-    }
+  // 增量取 trace：首次整份，之后 after=seq 只拿新增与变化的请求
+  async function pullTrace() {
+    const d = await get('/v1/magpie/trace' + (stage.seq ? '?after=' + stage.seq : ''));
+    stage.update(d);
+    return stage.trace();
   }
-  rtWake();
-  // 让服务端检查 Magpie 是否升级；重启后的 iframe 需要重新载入。
-  setInterval(async () => {
-    try {
-      const res = await fetch('/live-config', { cache: 'no-store' });
-      if (!res.ok) throw new Error('not ready');
-      const config = await res.json();
-      if (rtGeneration !== config.generation) rtWake();
-    } catch { rtNote.textContent = '正在连接 magpie web…'; }
-  }, 30000);
 
   /* ── 主循环 ── */
   function paint(bundle) {
@@ -686,8 +644,9 @@
         get('/v1/magpie/usage?period=today'),
         get('/v1/magpie/usage?period=7d'),
         get('/v1/magpie/usage?period=30d'),
-        get('/v1/magpie/quotas'),
-        get('/v1/magpie/trace'),
+        // kept=1：只读 magpie 已缓存的额度，不触发厂商读取与令牌刷新
+        get('/v1/magpie/quotas?kept=1'),
+        pullTrace(),
         // 燃尽曲线数据：单独容错——拿不到只是少画一条线，不算离线。
         get('/v1/magpie/quotas/history').catch(() => null),
         // 网关铭牌（版本/模型数）：单独容错。
@@ -759,7 +718,7 @@
     if (fastBusy || !lastGood) return;
     fastBusy = true;
     try {
-      const trace = await get('/v1/magpie/trace');
+      const trace = await pullTrace();
       lastGood.trace = trace;
       renderContext(trace);
       rtFit();
