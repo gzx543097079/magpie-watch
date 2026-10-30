@@ -259,7 +259,7 @@
         em.textContent = n > 1 ? '回答中 ×' + n : '回答中';
         em.classList.add('live');
       } else {
-        em.textContent = em.dataset.status || em.textContent;
+        em.textContent = em.dataset.status || '';
         em.classList.remove('live');
       }
     });
@@ -279,6 +279,44 @@
     }
   }
 
+  /** 窗口状态：用尽 3 > 紧张(≤20%) 2 > 临近重置(<90 分钟) 1 > 正常 0。 */
+  function winState(w) {
+    if (typeof w.remaining === 'number' && w.remaining <= 0) return 3;
+    if (typeof w.remaining === 'number' && w.remaining <= 20) return 2;
+    const ra = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
+    return (ra != null && ra - Date.now() < 90 * 60000) ? 1 : 0;
+  }
+  /** 窗口时长（毫秒），从窗口名读：5 hours / 7 days / 1 week / 30 days。读不出就不画匀速线。 */
+  function winSpan(name) {
+    const m = /(\d+(?:\.\d+)?)\s*(minute|min|hour|hr|h|day|d|week|wk|w|month|mo)/i.exec(String(name || ''));
+    if (!m) return null;
+    const unit = m[2].toLowerCase();
+    const ms = unit.startsWith('mi') ? 6e4 : unit.startsWith('h') ? 3.6e6 : unit.startsWith('d') ? 8.64e7
+      : unit.startsWith('w') ? 6.048e8 : 2.592e9;
+    return Number(m[1]) * ms;
+  }
+  /** 匀速应剩：按窗口剩余时间占比，此刻应该还剩多少（%）。 */
+  function paceLeft(w) {
+    const span = winSpan(w.name);
+    if (!span || !w.resetsAt) return null;
+    const left = new Date(w.resetsAt) - Date.now();
+    if (isNaN(left) || left < 0 || left > span) return null;
+    return left / span * 100;
+  }
+  const winLabel = (name) => {
+    const m = /^(\d+(?:\.\d+)?)\s*(hours?|days?|weeks?)$/i.exec(String(name || '').trim());
+    if (m) return m[1] + ' ' + ({ h: '小时', d: '天', w: '周' })[m[2][0].toLowerCase()];
+    if (/^credits?$/i.test(name || '')) return '点数';
+    return name || '额度';
+  };
+  const pctRound = (v) => (v > 0 && v < 1 ? v.toFixed(1) : Math.floor(v)) + '%';
+  /** 账号本身：遮蔽时只留邮箱前缀（同名账号靠它区分），非邮箱名原样。 */
+  const whoOf = (user) => {
+    if (!user) return '';
+    const m = mask(user);
+    return m.includes('@') && m !== user ? m.split('@')[0] : m;
+  };
+
   function renderQuotas(quotas, history, trace) {
     const accounts = quotas.data || [];
     // 整块右侧全给额度：按账号分组，每个账号列出它所有窗口，不折叠、不裁切。
@@ -291,14 +329,19 @@
         seen.add(fingerprint);
         return true;
       });
-      // 同一个账号里，余量最紧的窗口排在最上面。
+      // 窗口按时长固定排（5 小时在 7 天上面），不随余量换位；大数字另取最紧的那个。
+      const span = (w) => winSpan(w.name) || Infinity;
+      wins.sort((a, b) => span(a) - span(b));
       const rank = (w) => (typeof w.remaining === 'number' ? w.remaining : w.unit === 'credits' ? 200 : 150);
-      wins.sort((a, b) => rank(a) - rank(b));
-      return { q, wins, key: q.provider + '|' + q.name + '|' + q.plan + '|' + q.user };
+      const lead = wins.slice().sort((a, b) => rank(a) - rank(b))[0];
+      return { q, wins, lead, key: q.provider + '|' + q.name + '|' + q.plan + '|' + q.user };
     });
-    // 账号之间同样按最紧的那个窗口升序：用尽和将尽的账号一眼看到。
-    const worst = (g) => (g.wins.length ? Math.min(...g.wins.map((w) => (typeof w.remaining === 'number' ? w.remaining : 300))) : 400);
-    groups.sort((a, b) => worst(a) - worst(b));
+    // 账号之间：先按状态档（用尽 > 紧张 > 临近重置 > 正常）把出事的顶上来，
+    // 同档按名字固定——余量每 4 秒在变，按余量排会让账号不停换位，记不住谁在哪。
+    groups.forEach((g) => { g.tier = g.wins.length ? Math.max(0, ...g.wins.map(winState)) : -1; });
+    groups.sort((a, b) => b.tier - a.tier
+      || String(a.q.name || a.q.provider).localeCompare(String(b.q.name || b.q.provider))
+      || String(a.q.user || '').localeCompare(String(b.q.user || '')));
 
     // 没有额度窗口的账号不各占一行：它们没有读数，堆在底部反而把有读数的账号挤扁。
     const shown = groups.filter((g) => g.wins.length);
@@ -307,17 +350,13 @@
 
     keyed($('quota-list'), items, (g) => g.key,
       () => {
-        // 电源墙单元：标题（灯+名+状态词）→ 大燃料条 → 主读数行 → 小字收拢行。
+        // 机架单元：左侧一个大数字（账号最紧窗口的剩余），右侧每个窗口一条燃料条。
         const box = el('div', 'q-group');
+        const big = el('div', 'q-big');
+        big.append(el('b'), el('small'));
         const head = el('h3');
         head.append(el('b'), el('i'), el('em'));
-        const bar = el('div', 'q-bar');
-        const fill = el('i');
-        fill.append(el('span', null), el('span', 'qp2'));   // 电流粒子
-        bar.append(fill);
-        const main = el('div', 'q-main');
-        main.append(el('b'), el('em'), el('span'));
-        box.append(head, bar, main, el('div', 'q-sub'));
+        box.append(big, head, el('div', 'q-wins'), el('div', 'q-sub'));
         return box;
       },
       (node, g) => {
@@ -334,46 +373,58 @@
           return;
         }
 
-        const head = node.querySelector('h3');
-        const bar = node.querySelector('.q-bar i');
-        const main = node.querySelector('.q-main');
-        const sub = node.querySelector('.q-sub');
+        const [big, head, winsBox, sub] = node.children;
         const name = g.q.name || g.q.provider;
         head.children[0].textContent = mask(name);
-        // plan 里常常已经写着账号名（如「ZCODE START PLAN」），重复就不再排一遍。
+        // 同名账号（两个 Codex、两个 WorkBuddy）只能靠账号本身区分：名后跟遮蔽后的账号与套餐。
         const plan = g.q.plan && !String(g.q.plan).toUpperCase().includes(String(name).toUpperCase())
           && !String(name).toUpperCase().includes(String(g.q.plan).toUpperCase()) ? g.q.plan : '';
-        head.children[1].textContent = plan ? mask(plan) : '';
-        // 账号状态分诊：用尽 > 紧张(≤20%) > 临近重置(<90min) > 正常，一眼读。
-        const stOf = (w) => {
-          if (typeof w.remaining === 'number' && w.remaining <= 0) return 3;
-          if (typeof w.remaining === 'number' && w.remaining <= 20) return 2;
-          const ra = w.resetsAt && !isNaN(new Date(w.resetsAt)) ? new Date(w.resetsAt).getTime() : null;
-          return (ra != null && ra - Date.now() < 90 * 60000) ? 1 : 0;
-        };
-        const st = Math.max(0, ...g.wins.map(stOf));
-        node.classList.remove('st-ok', 'st-warn', 'st-bad', 'gone');
-        node.classList.add(st >= 2 ? 'st-bad' : (st === 1 ? 'st-warn' : 'st-ok'));
-        if (st >= 3) node.classList.add('gone');
-        node.dataset.acct = String(g.q.provider || '').toLowerCase() + '|' + String(g.q.user || '').toLowerCase();
-        const status = ['正常', '临近重置', '紧张', '用尽'][st];
-        head.children[2].dataset.status = status;
-        head.children[2].textContent = status;
-        head.children[2].className = st >= 3 ? 'on out' : (st >= 2 ? 'on bad' : (st === 1 ? 'on warn' : 'on'));
+        head.children[1].textContent = [whoOf(g.q.user), plan && mask(plan)].filter(Boolean).join(' · ');
 
-        // 燃料计取最紧窗口；其余窗口折进小字行。
-        const lead = g.wins[0];
-        bar.style.width = share(lead.remaining || 0, 100) + '%';
-        if (st >= 3) {
-          // 已用尽：状态词说了「用尽」，大数字回答下一个问题——多久恢复。
-          main.children[0].textContent = '重置倒计时';
-          main.children[1].textContent = resetShort(lead.resetsAt);
-          main.children[2].textContent = lead.resetsAt ? clockOf(lead.resetsAt) + ' 恢复' : '';
-        } else {
-          main.children[0].textContent = lead.name || '额度';
-          main.children[1].textContent = typeof lead.remaining === 'number' ? pct(lead.remaining) : (lead.display || '—');
-          main.children[2].textContent = resetText(lead.resetsAt);
-        }
+        g.st = Math.max(0, ...g.wins.map(winState));
+        node.classList.remove('st-ok', 'st-warn', 'st-bad', 'gone');
+        node.classList.add(g.st >= 2 ? 'st-bad' : (g.st === 1 ? 'st-warn' : 'st-ok'));
+        if (g.st >= 3) node.classList.add('gone');
+        node.dataset.acct = String(g.q.provider || '').toLowerCase() + '|' + String(g.q.user || '').toLowerCase();
+        // 正常时不写字：只有异常才出声，「正常」满屏重复反而把异常淹掉。
+        const status = ['', '临近重置', '紧张', '用尽'][g.st];
+        head.children[2].dataset.status = status;
+        if (!head.children[2].classList.contains('live')) head.children[2].textContent = status;
+        head.children[2].className = (g.st >= 3 ? 'out' : g.st >= 2 ? 'bad' : g.st === 1 ? 'warn' : '')
+          + (head.children[2].classList.contains('live') ? ' live' : '');
+
+        // 大数字：账号最紧的那个窗口还剩多少。没有百分比的窗口给原样读数。
+        const lead = g.lead;
+        big.children[0].textContent = typeof lead.remaining === 'number' ? pctRound(lead.remaining) : (lead.display || '—');
+        big.children[1].textContent = g.st >= 3 ? resetShort(lead.resetsAt) + '后恢复' : winLabel(lead.name) + ' 剩余';
+
+        // 每个窗口一行：名 · 燃料条（带匀速刻线）· 剩余 · 重置。
+        keyed(winsBox, g.wins, (w) => w.name || '额度',
+          () => {
+            const row = el('div', 'q-win');
+            const bar = el('div', 'q-bar');
+            bar.append(el('i'), el('s'));
+            row.append(el('span', 'q-wl'), bar, el('span', 'q-wv'), el('span', 'q-wr'));
+            return row;
+          },
+          (row, w) => {
+            const [label, bar, value, reset] = row.children;
+            const ws = winState(w);
+            row.className = 'q-win' + (ws >= 3 ? ' out' : ws >= 2 ? ' bad' : ws === 1 ? ' warn' : '');
+            label.textContent = winLabel(w.name);
+            const left = typeof w.remaining === 'number' ? w.remaining : null;
+            bar.children[0].style.width = (left == null ? 0 : share(left, 100)) + '%';
+            const pace = paceLeft(w);
+            bar.children[1].hidden = pace == null;
+            if (pace != null) bar.children[1].style.left = pace + '%';
+            // 落后匀速线（剩得比时间少）就是在超速烧：条尾不发光、读数提亮提醒。
+            row.classList.toggle('ahead', pace != null && left != null && left < pace - 8);
+            value.textContent = left == null ? (w.display || '—') : pct(left);
+            reset.textContent = w.resetsAt ? resetShort(w.resetsAt) : '';
+            row.title = (w.name || '') + (w.display ? ' · ' + w.display : '')
+              + (pace != null ? ' · 匀速应剩 ' + Math.round(pace) + '%' : '')
+              + (w.resetsAt ? ' · ' + clockOf(w.resetsAt) + ' 重置' : '');
+          });
 
         // 估算燃尽：history 里点位最多的窗口线。
         const rec = ((history && history.data) || []).find((h) => h.provider === g.q.provider && h.user === g.q.user);
@@ -382,15 +433,11 @@
           if (!bestLine || (ln.points || []).length > (bestLine.points || []).length) bestLine = ln;
         });
         g.eta = bestLine ? burnEstimate(bestLine) : null;
-
-        // 小字行：其余窗口「名 剩余」串 + 估算 + 占用，一行收拢。
+        // 估算燃尽是预警（琥珀），令牌占用只是读数（暗色）。
         const bits = [];
-        g.wins.slice(1).forEach((w) => {
-          bits.push(w.name + ' ' + (typeof w.remaining === 'number' ? pct(w.remaining) : (w.display || '—')));
-        });
-        if (g.eta && g.eta.name === lead.name) bits.push('估算 ' + etaText(g.eta.etaH) + ' 用尽');
-        if (lead.holds && lead.holds.tokens) bits.push(compact(lead.holds.tokens) + ' 令牌已占');
-        sub.textContent = bits.join(' · ');
+        if (g.eta) bits.push(el('b', null, '估算 ' + etaText(g.eta.etaH) + ' 后 ' + winLabel(g.eta.name) + ' 用尽'));
+        if (lead.holds && lead.holds.tokens) bits.push(el('span', null, compact(lead.holds.tokens) + ' 令牌已占'));
+        sub.replaceChildren(...bits.flatMap((b, i) => (i ? [' · ', b] : [b])));
       });
     if (!groups.length) $('quota-list').replaceChildren(el('div', 'empty', '等待账号额度'));
 
@@ -400,7 +447,7 @@
     const noWin = groups.filter((g) => !g.wins.length).length;
     const fastest = shown.map((g) => g.eta).filter(Boolean).sort((a, b) => a.etaH - b.etaH)[0];
     const note = $('quota-note');
-    note.dataset.base = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 按余量升序';
+    note.dataset.base = shown.length + ' 账号 · ' + wins.length + ' 窗口 · 刻线 = 匀速应剩';
     note.textContent = note.dataset.base;
     syncQuotaLive(trace);
     $('quota-foot').textContent = nearest ? '最近重置 · ' + resetText(nearest.resetsAt) : '';

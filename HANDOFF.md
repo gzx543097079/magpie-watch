@@ -1,12 +1,24 @@
 # MAGPIE 观测台 · 续接文档
 
-> 壁纸最后核对：2026-10-25（下方旧模块记录保留原核对日期）
+> 壁纸最后核对：2026-10-30（下方旧模块记录保留原核对日期）
 > 项目目录：`/Users/gengzhixiang/Desktop/桌面小组件/MagpieWatch`（2026-10-22 起全部项目内容集中在此子文件夹）  
 > 当前版本：`1.0.0 (1)`
 
 本文档面向后续开发者，记录当前实现边界、关键决策、接口约定、验证方法和建议的下一步。产品目标与设计原则见 [PRODUCT.md](PRODUCT.md)，用户安装说明见 [README.md](README.md)。
 
-## 2026-10-25：实时链路换成请求解剖（当前）
+## 2026-10-30：去掉 magpie web、额度机架重做、行情与设置（当前）
+
+- **登录断断续续的根因**：每个 magpie 进程（GUI + 每个 `magpie web`）都会轮换同一份 Claude Code / Codex OAuth 令牌；非 kept 的额度读取还会触发厂商读取与刷新。修复：
+  - 删除 `MagpieWeb.swift`、`design/skin.css` 与 LocalOrigin 的 `/live-config`、`/magpie/*`、`/api/*` 转发（只剩 GET/HEAD）。启动时 `reapLegacyMagpieWeb()` 收掉旧版留下的 `magpie web --no-open --addr 127.0.0.1:3431–3434`（用户自己的 3430 不碰），并清掉 `magpie.web.key/port`。
+  - 额度一律 `/v1/magpie/quotas?kept=1`。
+- **实时路由**：`design/routing-stage.js` / `.css` 按 magpie `plugins/routing/client.js` 的舞台部分移植（hueOf、seat/tryseat、curve、layout、staged、play/fly/pose、FLIP 重排、喜鹊 FLIER），只读 `/v1/magpie/trace?after=seq` 增量（pid 变化或 seq 回退时重置，按 ids 修剪，留 60 条）。单次拉取从约 213 KB 降到约 1 KB。`.gitignore` 的 `design/routing-*` 已为这两个文件开例外。
+- **额度机架**（用户反馈「不能一眼看出来」）：左大数字（最紧窗口剩余%，颜色即状态）+ 右侧逐窗口燃料条与「匀速应剩」刻线（窗口时长从窗口名读）；同名账号显示遮蔽后的账号前缀；状态词只在异常时出现；账号按状态档排序、同档按名字固定，窗口按时长固定。详见 DESIGN.md「电源墙」。
+- **设置·账号额度**：逐账号开关（键 `magpie.quota.hidden`，值为 `provider|user`，不含套餐）。壁纸由 LocalOrigin 在转发 `/v1/magpie/quotas` 时过滤；应用内视图用 `AppModel.quotas`（已过滤），设置列表用 `allQuotas`。只影响显示，不影响 Magpie 路由。
+- **菜单栏行情**：`MarketFeed` 白天 A股 / 夜盘（纳指、金龙、A50、费半）+ 黄金，按各交易所时区判开收盘，设置里可逐个勾选（`magpie.market.hidden`）。
+- **Dock 留白**：`--dock-left` = Dock 宽 + 12pt − 页面 36px 边距（原先 `max(100, …+20)` 太宽）；Dock 自动隐藏或不在左侧时为 0。
+- 验证：`./build-app.sh` 通过；安装后无 `magpie web` 进程；壁纸窗口 1920×1080 实拍核对额度列与 Dock 留白；隐藏一个账号后网关 11 条 → 壁纸 10 条。
+
+## 2026-10-25：实时链路换成请求解剖
 
 - 用户需求：去掉中右「实时链路 / 星系」模块，改用 Magpie 实际可取的其他数据；保留模型星球在右侧纵列的既有布局。
 - **数据能力核对**：实时请求 `/v1/magpie/usage/requests?period=today&limit=120` 确认返回 120 行账本与聚合。可用维度包括 `by.modelAt` / `by.provider` / `by.model`，逐行 `agent` / `provider` / `model` / `served`，令牌 `in` / `out` / `cache_read` / `cache_write` / `reasoning`，费用 `cost` / `priced`，耗时 `ms` / `ttft_ms` / `flow_ms` / `sent_ms` / `own_ms`，状态 `status` / `stop` / `ep`。顶层还提供 agents、providers、purposes、direct、series、decode 等聚合。
@@ -15,7 +27,7 @@
 - **移除内容**：删除星系回放、canvas、App Nap watchdog、route trip/node/spark、直连旁路与 3D 网关核心逻辑；保留 keyed 原位更新与新请求角标 blip。失败模型与失败请求仍用红色状态表达。
 - **文档同步**：README / PRODUCT / DESIGN / surface brief 已从「实时链路 / 星系」改为「请求解剖」，说明真实字段与缺失边界；历史 HANDOFF 章节保留旧实现记录。
 
-## 2026-10-24：其余三模块数据升级（当前）
+## 2026-10-24：其余三模块数据升级
 
 - 用户需求：优化链路舞台之外的模块，挖掘 Magpie 可取的数据。新接入 `/v1/magpie/quotas/history`（单独容错，拿不到只是少画曲线不算离线）。
 - **账号额度**：每账号标题下一幅**燃尽曲线**（当前窗口内剩余额度的折线+填充，quotas/history 真实点位）；按当前窗口的真实下降速度推算**「估算 X 后用尽」**（小时速率 <0.5%/h 或重置先到则不估，注在对应窗口行）；模块页脚新增「最快燃尽 · 窗口 · 估算 X」（琥珀色）。原始已有的 <90min 琥珀重置预警保留。

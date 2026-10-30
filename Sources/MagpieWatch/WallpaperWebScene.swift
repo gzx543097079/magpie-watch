@@ -60,8 +60,10 @@ struct WallpaperWebScene: NSViewRepresentable {
         func sendLayout() {
             guard ready, let webView else { return }
             let screen = webView.window?.screen ?? NSScreen.main
-            // 左侧让开 Dock：取可见区域与屏幕左边之差；右侧让开用户放文件夹的那一列。
-            let left = max(100, (screen?.visibleFrame.minX ?? 0) - (screen?.frame.minX ?? 0) + 20)
+            // 左侧只让开 Dock 本身：可见区域与屏幕左边之差 + 12pt 间隙，再扣掉页面自带的 36px 边距。
+            // Dock 不在左侧或自动隐藏时差为 0，就只剩页面边距。右侧让开用户放文件夹的那一列。
+            let dock = (screen?.visibleFrame.minX ?? 0) - (screen?.frame.minX ?? 0)
+            let left = dock > 0 ? max(0, dock + 12 - 36) : 0
             let right = max(0, rightInset)
             let bottom = max(28, (screen?.visibleFrame.minY ?? 0) - (screen?.frame.minY ?? 0) + 12)
             let script = "window.setMagpieLayout({fullscreen:\(fullscreen),left:\(left),right:\(right),bottom:\(bottom)})"
